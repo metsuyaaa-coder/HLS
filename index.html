@@ -163,6 +163,9 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 /* épisode suivant */
 #nx{position:absolute;right:22px;bottom:112px;z-index:3;width:min(300px,calc(100% - 44px));display:grid;gap:8px;background:#000e;border:1px solid #ffffff2e;border-radius:12px;padding:14px}
 #nx[hidden]{display:none}
+#skp{position:absolute;right:22px;bottom:112px;z-index:3;padding:clamp(9px,1.4vw,14px) clamp(16px,2.4vw,26px);border:1px solid #ffffffb3;background:#000b;color:#fff;font-weight:700;font-size:clamp(14px,1.8vw,18px);border-radius:6px;display:inline-flex;align-items:center;gap:8px}
+#skp:hover{background:#fff;color:#000}
+#skp[hidden],.locked #skp,.end #skp{display:none}
 #nx .nx0{color:var(--mu);font-size:13px;font-weight:600;letter-spacing:.04em}
 #nx .nx1{font-size:16px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #nx .nxb{display:flex;gap:8px}
@@ -234,6 +237,9 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Titre (facultatif)
         <input type="text" id="ttlIn" placeholder="Auto : détecté depuis le lien">
       </label>
+      <label>Passer l'intro (facultatif)
+        <input type="text" id="introIn" placeholder="Début-fin de l'intro, ex. 0:45-1:50" autocomplete="off">
+      </label>
       <div>
         <div style="font-size:14px;color:var(--mu);margin-bottom:6px">Sous-titres externes (.vtt ou .srt, facultatif)</div>
         <div id="subs" style="display:grid;gap:8px"></div>
@@ -257,6 +263,9 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
         </select>
       </div>
       <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" id="bchain" checked style="width:18px;height:18px;accent-color:#e50914">Enchaîner les épisodes : à la fin de S01E01, le lecteur lance S01E02 (même série dans la liste)</label>
+      <label>Intro commune à tous les liens (facultatif)
+        <input type="text" id="bintro" placeholder="ex. 0:45-1:50 : ou ajoute  intro 0:45-1:50  à la fin d'une ligne pour un seul épisode" autocomplete="off">
+      </label>
       <div class="msg" id="batchMsg" role="alert"></div>
       <button type="button" class="btn" id="batchGo">Générer les liens</button>
       <div id="batchOut" hidden>
@@ -294,6 +303,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
         <div class="pbs"><button class="pbtn" id="enr"></button><button class="pbtn sec" id="enn" hidden></button></div>
       </div>
       <div id="rs" hidden><span id="rst"></span><button id="rsb" type="button">Depuis le début</button></div>
+      <button id="skp" type="button" hidden>Passer l'intro ▸▸</button>
       <div id="nx" hidden>
         <span class="nx0">ÉPISODE SUIVANT</span>
         <span class="nx1" id="nxt"></span>
@@ -510,16 +520,23 @@ $('#f').onsubmit=e=>{
   src=stripToken(full(src));
   if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
   const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
-  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false));
+  const iv=$('#introIn').value.trim(),intro=normIntro(iv);
+  if(iv&&!intro){$('#msg').textContent="Intro invalide : écris par exemple 0:45-1:50 (début-fin).";return}
+  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false,null,intro));
   route();
 };
+/* intro : "0:45-1:50" (ou 45-110) -> "45-110" */
+const tSec=s=>{const p=String(s).trim().split(':');if(p.length>3||p.some(x=>!/^\d+(?:[.,]\d+)?$/.test(x)))return null;return p.reduce((a,x)=>a*60+parseFloat(x.replace(',','.')),0)};
+const normIntro=x=>{const m=String(x||'').match(/^\s*([\d:.,]+)\s*(?:[-–—>]+|à|to)\s*([\d:.,]+)\s*$/i);if(!m)return'';const a=tSec(m[1]),b=tSec(m[2]);if(a==null||b==null||b<=a)return'';return Math.round(a)+'-'+Math.round(b)};
+const introT=x=>{const m=String(x||'').match(/^(\d+)-(\d+)$/);return m?[+m[1],+m[2]]:null};
 const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
 const noHttps=u=>u.replace(/^https:\/\//i,'');
-function mk(src,title,subs,embed,q){
+function mk(src,title,subs,embed,q,intro){
   const p=['s='+encQ(noHttps(src))];
   if(title&&title!==guessTitle(src))p.push('t='+encQ(title));
   subs.forEach(x=>p.push('c='+encQ(shortLab(x.label)+'|'+noHttps(x.url))));
-  (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).join('\n'))));
+  if(intro)p.push('i='+intro);
+  (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).concat(x.intro?['@i='+x.intro]:[]).join('\n'))));
   if(embed)p.push('e=1');
   return base+'?'+p.join('&');
 }
@@ -548,19 +565,23 @@ function fluxItem(link){
   if(!raw||!/\./.test(raw))return null;
   if(!((q.get('e')||q.get('embed'))==='1'||q.has('t')||q.has('title')||q.has('c')||q.has('sub')))return null;
   const src=stripToken(full(raw));
-  return{src,title:smartName(q.get('t')||q.get('title')||'')||guessTitle(src),subs:parseSubs([...q.getAll('c'),...q.getAll('sub')])};
+  return{src,title:smartName(q.get('t')||q.get('title')||'')||guessTitle(src),subs:parseSubs([...q.getAll('c'),...q.getAll('sub')]),intro:normIntro(q.get('i')||'')};
 }
+const IRE=/(?:^|[\s|,;])intro\s*[=:]?\s*([\d:.,]+\s*(?:[-–—>]+|à|to)\s*[\d:.,]+)/i;
 function parseBatch(txt){
-  const out=[];let pend='';
+  const out=[];let pend='',pI='';
   txt.replace(/\r/g,'').split('\n').forEach(line=>{
     line=line.trim();if(!line)return;
-    (line.match(FLUXRE)||[]).forEach(l=>{const it=fluxItem(l);if(it){out.push(it);line=line.replace(l,' ')}});
+    let li='';const im=line.match(IRE);
+    if(im){li=normIntro(im[1]);line=line.replace(im[0],' ').trim()}
+    let had=false;
+    (line.match(FLUXRE)||[]).forEach(l=>{const it=fluxItem(l);if(it){had=true;if(li&&!it.intro)it.intro=li;out.push(it);line=line.replace(l,' ')}});
     line=line.trim();
-    if(!line){pend='';return}
+    if(!line){if(had)pend='';else if(li)pI=li;return}
     const m=line.match(URLRE);
-    if(!m){pend=stripSep(line);return}
+    if(!m){pend=stripSep(line);if(li)pI=li;return}
     const name=stripSep(line.replace(m[0],' '))||pend;pend='';
-    out.push({src:stripToken(full(m[0])),title:smartName(name)});
+    out.push({src:stripToken(full(m[0])),title:smartName(name),intro:li||pI});pI='';
   });
   return out;
 }
@@ -572,30 +593,30 @@ function batchQueue(b){
   return batch.map(x=>({x,i:epInfo(x.title||guessTitle(x.src))}))
     .filter(o=>o.i&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,c)=>a.i.s-c.i.s||a.i.e-c.i.e)
-    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src),subs:o.x.subs||[]}));
+    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src),subs:o.x.subs||[],intro:o.x.intro||''}));
 }
 /* bibliothèque : les liens déjà générés en mode lot sont retenus pour connaître l'épisode suivant même avec un lien simple */
 const LIBK='flux-lib';
 function libGet(){try{return JSON.parse(localStorage.getItem(LIBK))||{}}catch(e){return{}}}
 function libAdd(items){
   const m=libGet();
-  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]={t,c:b.subs||[]}});
+  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]={t,c:b.subs||[],i:b.intro||''}});
   const k=Object.keys(m);if(k.length>600)k.slice(0,k.length-600).forEach(x=>delete m[x]);
   try{localStorage.setItem(LIBK,JSON.stringify(m))}catch(e){}
 }
 function libQueue(c){
   const i=epInfo(c.title||guessTitle(c.src));if(!i)return[];
   const m=libGet(),seen=new Set();
-  return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],i:epInfo(v.t)}})
+  return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],intro:v.i||'',i:epInfo(v.t)}})
     .filter(o=>o.i&&o.src!==c.src&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,b)=>a.i.s-b.i.s||a.i.e-b.i.e)
     .filter(o=>{const k=o.i.s+'-'+o.i.e;if(seen.has(k))return false;seen.add(k);return true})
-    .map(o=>({src:o.src,title:o.title,subs:o.subs}));
+    .map(o=>({src:o.src,title:o.title,subs:o.subs,intro:o.intro||''}));
 }
 function batchLink(b){
   const t=b.title||guessTitle(b.src),k=$('#bkind').value,q=batchQueue(b);
-  if(k==='lnk')return mk(b.src,t,b.subs||[],false,q);
-  const u=mk(b.src,t,b.subs||[],true,q);
+  if(k==='lnk')return mk(b.src,t,b.subs||[],false,q,b.intro);
+  const u=mk(b.src,t,b.subs||[],true,q,b.intro);
   if(k==='embu')return u;
   return '<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
 }
@@ -619,10 +640,14 @@ function renderBatch(){
 }
 $('#batchGo').onclick=()=>{
   batch=parseBatch($('#batchIn').value);
+  const di=normIntro($('#bintro').value);
+  if($('#bintro').value.trim()&&!di){$('#batchMsg').textContent="Intro commune invalide : écris par exemple 0:45-1:50.";return}
+  if(di)batch.forEach(b=>{if(!b.intro)b.intro=di});
   libAdd(batch);
   $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
   renderBatch();
 };
+$('#bintro').onchange=()=>{if(batch.length)$('#batchGo').click()};
 $('#bkind').onchange=()=>{if(batch.length)renderBatch()};
 $('#bchain').onchange=()=>{if(batch.length)renderBatch()};
 $('#copyAll').onclick=e=>copyText(batch.map(batchLink).join('\n'),e.currentTarget);
@@ -687,8 +712,8 @@ function route(){
   $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
   if(!src){document.title='Flux – Lecteur HLS';return}
   const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
-  const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(parts.slice(1))}});
-  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq);
+  const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1)),rest=parts.slice(1),il=rest.find(l=>l.startsWith('@i='));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(rest.filter(l=>!l.startsWith('@i='))),intro:il?normIntro(il.slice(3).replace(/^(\d+)-(\d+)$/,'$1-$2')):''}});
+  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq,normIntro(q.get('i')||''));
 }
 window.addEventListener('popstate',route);
 
@@ -698,15 +723,15 @@ function destroy(){
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);
 }
-function start(src,title,subs,queue){
+function start(src,title,subs,queue,intro){
   if(cur&&wSec>=1)liveLeave();wLast=null;
-  cur={src,title,subs,q:queue||[]};viewSent=false;
+  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro)};viewSent=false;$('#skp').hidden=true;
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
   $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
-  const u=mk(src,title,subs,true,cur.q);
-  $('#lnk').value=mk(src,title,subs,false,cur.q);
+  const u=mk(src,title,subs,true,cur.q,cur.intro);
+  $('#lnk').value=mk(src,title,subs,false,cur.q,cur.intro);
   $('#embu').value=u;
   $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
   $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
@@ -773,7 +798,7 @@ function setAudio(i){
   setTimeout(()=>{switching=false},10000);
 }
 function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
-$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q)}};
+$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
    donc on garde les sous-titres externes en mémoire à part */
@@ -1020,16 +1045,23 @@ function showUnlock(){const u=$('#unlock');u.hidden=false;clearTimeout(unlockT);
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>e.hidden=true,2200)}
 
 /* tap / double tap : touch = afficher/masquer, souris = lecture/pause */
-let lastTap=0,tapT;
+let lastTap=0,tapT,chain={s:0,t:0,until:0};
 function flash(side,t){const f=$(side==='l'?'#fbl':'#fbr');f.textContent=t;f.classList.remove('go');void f.offsetWidth;f.classList.add('go')}
 $('#hit').addEventListener('pointerup',e=>{
   if(e.button>0)return;
   if(locked){showUnlock();return}
   const touch=e.pointerType==='touch',now=Date.now(),r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+  const side=x<.33?-1:x>.67?1:0;
+  if(touch&&side&&now<chain.until&&side===chain.s){ /* taps successifs : on continue de sauter */
+    clearTimeout(tapT);lastTap=0;
+    chain.t+=10;chain.until=now+700;seekBy(10*side);flash(side<0?'l':'r',(side<0?'−':'+')+chain.t+' s');
+    return;
+  }
   if(now-lastTap<300){
     clearTimeout(tapT);lastTap=0;
     if(!touch)toggle();
-    if(x<.33){seekBy(-10);flash('l','−10 s')}else if(x>.67){seekBy(10);flash('r','+10 s')}else fs();
+    if(side<0){seekBy(-10);flash('l','−10 s')}else if(side>0){seekBy(10);flash('r','+10 s')}else fs();
+    if(touch&&side)chain={s:side,t:10,until:now+700};
     return;
   }
   lastTap=now;
@@ -1087,6 +1119,15 @@ function pzArm(){clearTimeout(pzT);pl.classList.remove('psd');if(v.paused)pzT=se
 $('#pzb').innerHTML=svg(IC.play)+'<span>Reprendre</span>';
 $('#pzb').onclick=()=>v.play().catch(()=>{});
 
+/* ---------- passer l'intro ---------- */
+const skp=$('#skp');
+function skpSync(){
+  const i=cur&&cur.introT,t=v.currentTime,on=!!i&&!v.ended&&t>=i[0]&&t<i[1]-0.5;
+  if(skp.hidden===on)skp.hidden=!on;
+}
+['timeupdate','seeked','loadedmetadata'].forEach(n=>v.addEventListener(n,skpSync));
+skp.onclick=()=>{if(cur&&cur.introT){v.currentTime=cur.introT[1];skp.hidden=true}};
+
 /* ---------- épisode suivant + écran de fin ---------- */
 const hasNext=()=>!!(cur&&cur.q&&cur.q.length);
 const NX_T=20; /* secondes avant la fin : la carte "Épisode suivant" apparaît */
@@ -1094,8 +1135,8 @@ function goNext(){
   if(!hasNext())return;
   const n=cur.q[0],rest=cur.q.slice(1);
   liveLeave();destroy();
-  start(n.src,n.title,n.subs||[],rest);
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest))}catch(e){}}
+  start(n.src,n.title,n.subs||[],rest,n.intro||'');
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest,n.intro||''))}catch(e){}}
 }
 function nxSync(){
   const box=$('#nx');
