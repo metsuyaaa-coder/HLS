@@ -190,6 +190,7 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #skp,#sko,#rsb{background:#fff;color:#000;border-radius:8px;font-weight:700;box-shadow:none}
 #skp:hover,#sko:hover,#rsb:hover{background:#ffffffbf;box-shadow:none}
 /* "Depuis le début" : plus petit */
+#skp,#sko{gap:10px;font-size:clamp(13px,1.8vw,20px);padding:clamp(8px,1.2vw,12px) clamp(14px,2vw,24px) clamp(8px,1.2vw,12px) clamp(12px,1.7vw,20px)}
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
@@ -367,6 +368,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <div class="acts">
             <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
             <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
+            <button class="ab" id="ft" aria-label="Format de l'image"><span data-i="ratio"></span><span id="ftl">Format : Ajuster</span></button>
             <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
             <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
             <button class="ib" id="fs" aria-label="Plein écran" data-i="fs"></button>
@@ -429,6 +431,7 @@ fw:ARC+'<text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="mid
 bk:'<g transform="translate(24 0) scale(-1 1)">'+ARC+'</g><text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="middle">10</text>',
 cc:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>',
 set:'<path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>',
+ratio:'<path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>',
 pip:'<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
 fs:'<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>',
 x:`<path d="M6 6l12 12M18 6L6 18" ${S}/>`,
@@ -1210,6 +1213,16 @@ function mkSync(force){
   mkLayout();
 }
 mkLayout();
+
+/* ---------- format de l'image : ajuster / remplir / étirer ---------- */
+const FITS=[['contain','Ajuster'],['cover','Remplir'],['fill','Étirer']];
+function setFit(i,msg){
+  i=(i%FITS.length+FITS.length)%FITS.length;
+  v.style.objectFit=FITS[i][0];$('#ftl').textContent='Format : '+FITS[i][1];
+  savePref('fit',i);if(msg)toast('Format : '+FITS[i][1]);
+}
+$('#ft').onclick=()=>setFit((prefs.fit|0)+1,true);
+setFit(prefs.fit|0,false);
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
