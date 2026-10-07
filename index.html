@@ -552,6 +552,24 @@ function batchQueue(b){
     .sort((a,c)=>a.i.s-c.i.s||a.i.e-c.i.e)
     .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src)}));
 }
+/* bibliothèque : les liens déjà générés en mode lot sont retenus pour connaître l'épisode suivant même avec un lien simple */
+const LIBK='flux-lib';
+function libGet(){try{return JSON.parse(localStorage.getItem(LIBK))||{}}catch(e){return{}}}
+function libAdd(items){
+  const m=libGet();
+  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]=t});
+  const k=Object.keys(m);if(k.length>600)k.slice(0,k.length-600).forEach(x=>delete m[x]);
+  try{localStorage.setItem(LIBK,JSON.stringify(m))}catch(e){}
+}
+function libQueue(c){
+  const i=epInfo(c.title||guessTitle(c.src));if(!i)return[];
+  const m=libGet(),seen=new Set();
+  return Object.keys(m).map(src=>({src,title:m[src],i:epInfo(m[src])}))
+    .filter(o=>o.i&&o.src!==c.src&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
+    .sort((a,b)=>a.i.s-b.i.s||a.i.e-b.i.e)
+    .filter(o=>{const k=o.i.s+'-'+o.i.e;if(seen.has(k))return false;seen.add(k);return true})
+    .map(o=>({src:o.src,title:o.title}));
+}
 function batchLink(b){
   const t=b.title||guessTitle(b.src),k=$('#bkind').value,q=batchQueue(b);
   if(k==='lnk')return mk(b.src,t,[],false,q);
@@ -579,6 +597,7 @@ function renderBatch(){
 }
 $('#batchGo').onclick=()=>{
   batch=parseBatch($('#batchIn').value);
+  libAdd(batch);
   $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
   renderBatch();
 };
@@ -658,6 +677,7 @@ function start(src,title,subs,queue){
   v.crossOrigin='anonymous';
   subs.forEach((s,i)=>addExt(s,i===0));
   if(pos)showResume(pos);
+  if(!cur.q.length)cur.q=libQueue(cur);
   if(!cur.q.length)guessNext(cur);
   if(window.Hls&&Hls.isSupported())initHls(pos,-1,true);
   else if(v.canPlayType('application/vnd.apple.mpegurl')){
