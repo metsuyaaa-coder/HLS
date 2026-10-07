@@ -327,7 +327,7 @@ const LANGS=[
 ['hi','Hindi','hin'],['th','Thaï','tha','thai'],['vi','Vietnamien','vie','vietnamese'],['id','Indonésien','ind','indonesian'],
 ['cs','Tchèque','cze','ces','czech'],['hu','Hongrois','hun','hungarian'],['ro','Roumain','rum','ron','romanian'],
 ['uk','Ukrainien','ukr','ukrainian'],['fa','Persan','per','fas','persian'],['ca','Catalan','cat'],['no','Norvégien','nor','nob','norwegian']];
-const MODS={frc:'forcé',forced:'forcé',force:'forcé',forcee:'forcé',forces:'forcé',sdh:'(SDH)',cc:'(SDH)'};
+const MODS={frc:'(FORCÉ)',forced:'(FORCÉ)',force:'(FORCÉ)',forcee:'(FORCÉ)',forces:'(FORCÉ)',sdh:'(SDH)',cc:'(SDH)'};
 const plain=x=>String(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const LA={},LN={};
 LANGS.forEach(([c,n,...al])=>{LN[c]=n;[c,n,...al].forEach(a=>{LA[plain(a)]=c})});
@@ -338,18 +338,36 @@ function parseLang(x){
   t.slice(1).forEach(w=>{const m=MODS[plain(w)];if(m){if(!mods.includes(m))mods.push(m)}else rest.push(w)});
   return{c,mods,rest};
 }
-const nl=x=>{const p=parseLang(x);return p?[LN[p.c],...p.mods,...p.rest].join(' '):x};
-const shortLab=x=>{const p=parseLang(x);return p?[p.c,...p.mods.map(m=>m==='forcé'?'frc':'sdh'),...p.rest].join(' '):x};
+const nl=x=>{const p=parseLang(x);if(p)return[LN[p.c],...p.mods,...p.rest].join(' ');return String(x).split(/\s+/).map(w=>MODS[plain(w)]||w).join(' ')};
+const shortLab=x=>{const p=parseLang(x);return p?[p.c,...p.mods.map(m=>m==='(FORCÉ)'?'frc':'sdh'),...p.rest].join(' '):x};
 
 /* ---------- titre deviné depuis le lien ---------- */
 const hasScheme=u=>/^[a-z][a-z0-9+.-]*:\/\//i.test(u);
 const full=u=>hasScheme(u)?u:'https://'+u;
-const JUNK=/^(?:\d{3,4}p|4k|uhd|hd|sd|bluray|blu-ray|bdrip|brrip|web-?dl|web-?rip|webrip|hdtv|dvdrip|remux|hdrip|x26[45]|h26[45]|hevc|avc|av1|multi|vff|vfq|vfi|vf2?|vostfr|vo|truefrench|french|subfrench|dts|truehd|atmos|aac|ac3|eac3|ddp\d?|dd\d|flac|hdr10?\+?|hdr|dv|hlg|10bit|8bit|4klight|hdlight|proper|repack|extended|unrated|imax|remastered|internal)$/i;
+const JUNK=/^(?:\d{3,4}p|4k|uhd|hd|sd|bluray|blu-ray|bdrip|brrip|web-?dl|web-?rip|webrip|hdtv|dvdrip|remux|hdrip|x26[45]|h26[45]|hevc|avc|av1|multi|vff|vfq|vfi|vf2?|vostfr|vo|truefrench|french|subfrench|dts|truehd|atmos|aac|ac3|eac3|ddp\d?|dd\d|flac|hdr10?\+?|hdr|dv|hlg|10bit|8bit|4klight|hdlight|proper|repack|extended|unrated|imax|remastered|internal|nf|amzn|dsnp|hmax|atvp|pcok)$/i;
 const isJunk=w=>JUNK.test(w)||JUNK.test(w.split('-')[0]);
+/* renommage intelligent : Inside.the.Circle.S01E01 -> Inside The Circle : S01E01 ; UNABOMBER.2026.MULTi.1080p… -> Unabomber (2026) */
+const ACR=new Set(['FBI','NCIS','CSI','SWAT','NYPD','LAPD','UFC','WWE','BBC','CIA','NSA','DC','UK','US','USA','TV','AI','DJ','MI6']);
+const fixW=(w,cap)=>{
+  if(w===w.toUpperCase()&&w!==w.toLowerCase()&&!ACR.has(w)&&!/^[IVX]{2,4}$/.test(w)&&(w.length>1||!cap))w=w.toLowerCase();
+  return cap?w.charAt(0).toUpperCase()+w.slice(1):w;
+};
+const titleCase=t=>t.replace(/(^|[^\p{L}\p{M}\d])([\p{L}\p{M}][\p{L}\p{M}\d'’]*)/gu,(m,a,w)=>{
+  const ps=w.split(/(['’])/);let out='';
+  ps.forEach((p,i)=>{if(i%2){out+=p;return}out+=fixW(p,i===0||ps[i-2].length===1)});
+  return a+out;
+});
+const looksRelease=x=>{
+  if((x.match(/[^\s.][._][^\s.]/g)||[]).length>=2)return true;
+  if(/\bS\d{1,2} ?E\d{1,3}\b/i.test(x)||/\b\d{1,2}x\d{2,3}\b/i.test(x))return true;
+  if(x.split(/[\s._+]+/).some((t,i)=>i>0&&isJunk(t)))return true;
+  return x===x.toUpperCase()&&/[A-ZÀ-Þ]{3}/.test(x);
+};
+const smartName=x=>{x=String(x||'').trim();if(!x||!looksRelease(x))return x;return cleanName(x)||x};
 function cleanName(x){
   x=x.replace(/[\[{][^\]}]*[\]}]/g,' ').replace(/[._+]+/g,' ').replace(/\s+/g,' ').trim();
   const trim=t=>t.replace(/^[\s:\-–]+|[\s:\-–(]+$/g,'');
-  const cap=t=>/[A-ZÀ-Þ]/.test(t)?t:t.replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase());
+  const cap=titleCase;
   const ep=x.match(/\bS(\d{1,2}) ?E(\d{1,3})\b/i)||x.match(/\b(\d{1,2})x(\d{2,3})\b/i);
   if(ep){
     const code='S'+ep[1].padStart(2,'0')+'E'+ep[2].padStart(2,'0'),name=trim(x.slice(0,ep.index));
@@ -381,7 +399,7 @@ function guessTitle(src){
 /* ---------- accueil ---------- */
 function addRow(l='',u=''){
   const r=el('div','sub');
-  const a=el('input');a.type='text';a.placeholder='FR, EN, ES… (fr frc = forcé)';a.value=l;a.setAttribute('aria-label','Nom de la langue');
+  const a=el('input');a.type='text';a.placeholder='FR, EN, ES… (fr frc = Français (FORCÉ))';a.value=l;a.setAttribute('aria-label','Nom de la langue');
   a.oninput=()=>{if(/\s$/.test(a.value)){const n=nl(a.value.trim());if(n!==a.value.trim())a.value=n+' '}};
   a.onchange=()=>{a.value=nl(a.value.trim())};
   const b=el('input');b.type='url';b.placeholder='https://exemple.com/fr.vtt';b.value=u;b.setAttribute('aria-label','Lien du sous-titre');
@@ -396,7 +414,7 @@ $('#f').onsubmit=e=>{
   src=full(src);
   if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
   const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
-  history.pushState(null,'',mk(src,$('#ttlIn').value.trim()||guessTitle(src),subs,false));
+  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false));
   route();
 };
 const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
@@ -409,6 +427,7 @@ function mk(src,title,subs,embed){
   return base+'?'+p.join('&');
 }
 $('#ttlIn').addEventListener('input',e=>{e.target.dataset.e=e.target.value?'1':''});
+{const t=$('#ttlIn'),fix=()=>{const n=smartName(t.value);if(n!==t.value.trim())t.value=n};t.addEventListener('change',fix);t.addEventListener('paste',()=>setTimeout(fix,0))}
 $('#src').addEventListener('input',()=>{const t=$('#ttlIn');if(!t.dataset.e)t.value=guessTitle($('#src').value.trim())});
 
 
@@ -423,7 +442,7 @@ function parseBatch(txt){
     const m=line.match(URLRE);
     if(!m){pend=stripSep(line);return}
     const name=stripSep(line.replace(m[0],' '))||pend;pend='';
-    out.push({src:full(m[0]),title:name});
+    out.push({src:full(m[0]),title:smartName(name)});
   });
   return out;
 }
