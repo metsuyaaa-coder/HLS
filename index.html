@@ -373,6 +373,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <div class="acts">
             <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
             <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
+            <button class="ab" id="bo" aria-label="Boost du volume"><span data-i="vol"></span><span id="bol">Boost : 100 %</span></button>
             <button class="ab" id="ft" aria-label="Format de l'image"><span data-i="ratio"></span><span id="ftl">Format : Ajuster</span></button>
             <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
             <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
@@ -753,7 +754,7 @@ window.addEventListener('pagehide',liveLeave);
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
 
 /* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
-const PASS_HASH='000937cc5efa748969146f517bcbc5af4ae8b9f87ca5f2db209d159f5b17a294';
+const PASS_HASH='5d9bf37fb2496023808138516349da5d5bfba15806349e75822b6190dfe17698';
 const AK='flux-auth';
 const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const authed=()=>{try{return localStorage.getItem(AK)===PASS_HASH}catch(e){return false}};
@@ -1254,6 +1255,49 @@ async function wlSync(){
 }
 ['play','playing','pause','ended','emptied'].forEach(n=>v.addEventListener(n,wlSync));
 document.addEventListener('visibilitychange',wlSync);
+
+/* ---------- boost du volume au-delà de 100 % (Web Audio) ---------- */
+const BOOSTS=[1,1.5,2,3];
+let actx=null,bgain=null,bwait=false;
+const bLab=x=>'Boost : '+Math.round(x*100)+' %';
+function boostGraph(){
+  if(actx)return true;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  /* hors MSE (HLS natif Safari) le flux cross-origin serait rendu muet : on refuse */
+  if(!AC||!/^blob:/.test(v.currentSrc||''))return false;
+  try{
+    actx=new AC();const src=actx.createMediaElementSource(v);
+    bgain=actx.createGain();
+    const comp=actx.createDynamicsCompressor();
+    comp.threshold.value=-10;comp.knee.value=12;comp.ratio.value=4;comp.attack.value=.003;comp.release.value=.25;
+    src.connect(bgain);bgain.connect(comp);comp.connect(actx.destination);
+    if(actx.state!=='running')actx.resume().catch(()=>{});
+    return true;
+  }catch(e){actx=null;bgain=null;return false}
+}
+function setBoost(x,msg){
+  $('#bol').textContent=bLab(x);
+  if(x>1&&!boostGraph()){
+    if(msg)toast('Boost indisponible avec ce flux');
+    $('#bol').textContent=bLab(1);return false;
+  }
+  if(bgain){bgain.gain.value=x;if(actx.state!=='running')actx.resume().catch(()=>{})}
+  savePref('boost',x);
+  if(msg)toast(bLab(x));
+  return true;
+}
+$('#bo').onclick=()=>{
+  const cu=BOOSTS.indexOf(prefs.boost||1),nx=BOOSTS[(cu+1)%BOOSTS.length];
+  setBoost(nx,true);
+};
+/* boost mémorisé : appliqué au premier geste de l'utilisateur (sinon l'audio resterait muet) */
+function boostRestore(){
+  if(!(prefs.boost>1)||actx||bwait)return;
+  $('#bol').textContent=bLab(prefs.boost);bwait=true;
+  const go=()=>{bwait=false;if(!actx)setBoost(prefs.boost,false)};
+  ['pointerdown','keydown'].forEach(n=>document.addEventListener(n,go,{once:true,capture:true}));
+}
+v.addEventListener('loadedmetadata',()=>{if(actx&&bgain)bgain.gain.value=prefs.boost||1;else boostRestore()});
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
