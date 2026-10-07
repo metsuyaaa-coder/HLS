@@ -8,9 +8,15 @@ const json = (o, status = 200) => new Response(JSON.stringify(o), {
 });
 
 async function redis(cmds) {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis non configuré');
+  const url =
+    process.env.UPSTASH_KV_REST_API_URL ||
+    process.env.KV_REST_API_URL ||
+    process.env.UPSTASH_REDIS_REST_URL;
+  const token =
+    process.env.UPSTASH_KV_REST_API_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Redis non configuré (url=' + !!url + ', token=' + !!token + ')');
   const r = await fetch(url + '/pipeline', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -62,8 +68,10 @@ export default async function middleware(request) {
   const [scheme, enc] = (request.headers.get('authorization') || '').split(' ');
   let ok = false;
   if (scheme === 'Basic' && enc) {
-    const d = atob(enc);
-    ok = pass && d.slice(d.indexOf(':') + 1) === pass;
+    try {
+      const d = atob(enc);
+      ok = !!pass && d.slice(d.indexOf(':') + 1) === pass;
+    } catch (e) { ok = false; }
   }
   if (!embed && !ok) return new Response('Accès privé', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="Flux"' } });
   if (u.pathname === '/api/stats') return stats();
