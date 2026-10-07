@@ -191,6 +191,11 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #skp:hover,#sko:hover,#rsb:hover{background:#ffffffbf;box-shadow:none}
 /* "Depuis le début" : plus petit */
 #skp,#sko{gap:10px;font-size:clamp(13px,1.8vw,20px);padding:clamp(8px,1.2vw,12px) clamp(14px,2vw,24px) clamp(8px,1.2vw,12px) clamp(12px,1.7vw,20px)}
+/* mobile et tablette : ces boutons seulement en plein écran, et skip décalé vers la gauche */
+@media(pointer:coarse){
+  .player:not(.isfs) #rs,.player:not(.isfs) #skp,.player:not(.isfs) #sko{display:none!important}
+  #skp,#sko{right:clamp(40px,9%,110px)}
+}
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
@@ -1227,6 +1232,7 @@ setFit(prefs.fit|0,false);
 /* ---------- plein écran : bascule en paysage sur mobile ---------- */
 function fsChange(){
   const on=document.fullscreenElement===pl||document.webkitFullscreenElement===pl,o=screen.orientation;
+  pl.classList.toggle('isfs',on);
   if(!o||!o.lock||!matchMedia('(pointer:coarse)').matches)return;
   if(on){if(!v.videoWidth||v.videoWidth>=v.videoHeight)o.lock('landscape').catch(()=>{})}
   else{try{o.unlock()}catch(e){}}
