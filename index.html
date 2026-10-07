@@ -134,10 +134,11 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #pz .pz2{font-size:clamp(24px,5.2vw,64px);font-weight:800;line-height:1.05;max-width:min(80%,900px);text-shadow:0 2px 12px #000a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 #pz .pz3{color:#ddd;font-size:clamp(13px,1.8vw,20px);font-weight:500;font-variant-numeric:tabular-nums}
 #pz .pz3 b{color:#fff}
-#pzb{pointer-events:auto;margin-top:clamp(6px,1.6vw,18px);display:flex;align-items:center;justify-content:center;gap:10px;width:clamp(54px,8vw,84px);height:clamp(54px,8vw,84px);border-radius:50%;border:2px solid #fffc;background:#0006;transition:transform .15s,background .15s,border-color .15s}
-#pzb:hover{transform:scale(1.08);background:#ffffff26;border-color:#fff}
-#pzb:active{transform:scale(.94)}
-#pzb svg{width:48%;height:48%;margin-left:6%}
+#pzb{pointer-events:auto;margin-top:clamp(8px,1.8vw,20px);display:inline-flex;align-items:center;justify-content:center;gap:clamp(8px,1.2vw,14px);padding:clamp(10px,1.5vw,16px) clamp(20px,3vw,38px) clamp(10px,1.5vw,16px) clamp(16px,2.4vw,30px);border-radius:6px;background:#fff;color:#000;font-size:clamp(15px,2.2vw,26px);font-weight:700;line-height:1;letter-spacing:.01em;box-shadow:0 6px 24px #0008;transition:background .15s,transform .15s,box-shadow .15s}
+#pzb:hover{background:#ffffffbf;box-shadow:0 8px 28px #000a}
+#pzb:active{transform:scale(.96)}
+#pzb:focus-visible{outline:3px solid #fff;outline-offset:3px}
+#pzb svg{width:1.5em;height:1.5em;flex:none}
 .locked #pzb{display:none}
 @media(prefers-reduced-motion:reduce){#pz{transition:none}}
 
@@ -900,7 +901,7 @@ function pzShow(){
   pl.classList.add('psd','idle');
 }
 function pzArm(){clearTimeout(pzT);pl.classList.remove('psd');if(v.paused)pzT=setTimeout(pzShow,PZ_DELAY)}
-$('#pzb').innerHTML=svg(IC.play);
+$('#pzb').innerHTML=svg(IC.play)+'<span>Reprendre</span>';
 $('#pzb').onclick=()=>v.play().catch(()=>{});
 v.addEventListener('ended',()=>{clearTimeout(pzT);pl.classList.remove('psd')});
 
