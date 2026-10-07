@@ -196,10 +196,9 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
   .player:not(.isfs) #rs,.player:not(.isfs) #skp,.player:not(.isfs) #sko{display:none!important}
   #skp,#sko{right:clamp(40px,9%,110px)}
 }
-/* boost du volume : petit bouton sous la barre de volume (à droite) */
-.bw #bo{width:44px;height:24px;border:0;border-radius:6px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#fff;background:transparent!important;-webkit-tap-highlight-color:transparent}
-.bw #bo:hover,.bw #bo:active,.bw #bo:focus{background:transparent!important}
-.bw #bo.on{color:var(--red)}
+/* barre de volume : 0 à 200 %, repère à 100 %, rouge quand le boost est actif */
+#vw.b2 .bt::after{content:'';position:absolute;left:0;right:0;bottom:50%;height:2px;background:#000a}
+#vw.boost #vf{background:var(--red)}
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
@@ -359,7 +358,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
 
         <div class="bw" id="bw" aria-label="Luminosité"><span data-i="sun"></span><div class="bt"><i id="bf"></i></div></div>
 
-        <div class="bw vw" id="vw" aria-label="Volume"><button id="mute" aria-label="Couper le son"></button><div class="bt"><i id="vf"></i></div><button id="bo" type="button" aria-label="Boost du volume" title="Boost du volume">100%</button></div>
+        <div class="bw vw" id="vw" aria-label="Volume"><button id="mute" aria-label="Couper le son"></button><div class="bt"><i id="vf"></i></div></div>
 
         <div class="mid">
           <button class="rb" id="bk" aria-label="Reculer de 10 secondes" data-i="bk"></button>
@@ -1095,7 +1094,7 @@ function vslider(box,fn){
 }
 function setBright(r){$('#bf').style.height=r*100+'%';v.style.filter='brightness('+(0.25+0.75*r)+')'}
 vslider($('#bw'),r=>{setBright(r);savePref('bright',r)});
-vslider($('#vw'),r=>{v.volume=r;v.muted=r===0});
+vslider($('#vw'),r=>{let L=r*maxL();if(Math.abs(L-1)<.05)L=1;setLevel(L)});
 
 /* verrouillage */
 function setLock(on){
@@ -1136,9 +1135,13 @@ function sync(){
   $('#pp').innerHTML=svg(v.paused?IC.play:IC.pause);
   wake();
 }
+function maxL(){return window.Hls&&Hls.isSupported()&&(window.AudioContext||window.webkitAudioContext)?2:1}
+function curLevel(){return v.muted?0:((bst||1)>1?bst:v.volume)}
 function vsync(){
+  const M=maxL(),L=curLevel(),vw=$('#vw');
   $('#mute').innerHTML=svg(v.muted||v.volume===0?IC.mute:IC.vol);
-  $('#vf').style.height=(v.muted?0:v.volume)*100+'%';
+  $('#vf').style.height=Math.min(1,L/M)*100+'%';
+  vw.classList.toggle('b2',M>1);vw.classList.toggle('boost',(bst||1)>1&&!v.muted);
 }
 function tsync(){
   const d=v.duration,live=!isFinite(d);
@@ -1260,9 +1263,8 @@ async function wlSync(){
 document.addEventListener('visibilitychange',wlSync);
 
 /* ---------- boost du volume au-delà de 100 % (Web Audio) ---------- */
-const BOOSTS=[1,1.5,2,3];
+var bst=prefs.boost>1?prefs.boost:1; /* niveau de boost voulu (1 = aucun) */
 let actx=null,bgain=null,bwait=false;
-const bLab=x=>Math.round(x*100)+'%';
 function boostGraph(){
   if(actx)return true;
   const AC=window.AudioContext||window.webkitAudioContext;
@@ -1279,28 +1281,26 @@ function boostGraph(){
   }catch(e){actx=null;bgain=null;return false}
 }
 function setBoost(x,msg){
-  $('#bo').textContent=bLab(x);$('#bo').classList.toggle('on',x>1);
-  if(x>1&&!boostGraph()){
-    if(msg)toast('Boost indisponible avec ce flux');
-    $('#bo').textContent=bLab(1);$('#bo').classList.remove('on');return false;
-  }
+  if(x>1&&!boostGraph()){bst=1;if(msg)toast('Boost indisponible avec ce flux');vsync();return false}
+  bst=x;
   if(bgain){bgain.gain.value=x;if(actx.state!=='running')actx.resume().catch(()=>{})}
-  savePref('boost',x);
-  if(msg)toast('Boost : '+bLab(x));
-  return true;
+  savePref('boost',x);vsync();return true;
 }
-$('#bo').onclick=()=>{
-  const cu=BOOSTS.indexOf(prefs.boost||1),nx=BOOSTS[(cu+1)%BOOSTS.length];
-  setBoost(nx,true);
-};
+/* niveau global de la barre : 0 à 100 % = volume normal, 100 à 200 % = boost */
+function setLevel(L){
+  L=Math.max(0,Math.min(maxL(),L));
+  if(L<=1){v.volume=L;v.muted=L===0;if((bst||1)>1)setBoost(1)}
+  else{v.muted=false;v.volume=1;setBoost(L)}
+  vsync();
+}
 /* boost mémorisé : appliqué au premier geste de l'utilisateur (sinon l'audio resterait muet) */
 function boostRestore(){
   if(!(prefs.boost>1)||actx||bwait)return;
-  $('#bo').textContent=bLab(prefs.boost);$('#bo').classList.add('on');bwait=true;
+  bwait=true;
   const go=()=>{bwait=false;if(!actx)setBoost(prefs.boost,false)};
   ['pointerdown','keydown'].forEach(n=>document.addEventListener(n,go,{once:true,capture:true}));
 }
-v.addEventListener('loadedmetadata',()=>{if(actx&&bgain)bgain.gain.value=prefs.boost||1;else boostRestore()});
+v.addEventListener('loadedmetadata',()=>{if(actx&&bgain)bgain.gain.value=bst||1;else boostRestore()});
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
@@ -1468,8 +1468,8 @@ document.addEventListener('keydown',e=>{
   else if(k===' '||k==='k')toggle();
   else if(k==='arrowleft')seekBy(-10);
   else if(k==='arrowright')seekBy(10);
-  else if(k==='arrowup')v.volume=Math.min(1,v.volume+.1);
-  else if(k==='arrowdown')v.volume=Math.max(0,v.volume-.1);
+  else if(k==='arrowup')setLevel(curLevel()+.1);
+  else if(k==='arrowdown')setLevel(curLevel()-.1);
   else if(k==='m')v.muted=!v.muted;
   else if(k==='f')fs();
   else if(k==='c')setSub(curSub?null:(subList()[0]||null));
