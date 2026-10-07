@@ -1224,6 +1224,31 @@ function setFit(i,msg){
 $('#ft').onclick=()=>setFit((prefs.fit|0)+1,true);
 setFit(prefs.fit|0,false);
 
+/* ---------- plein écran : bascule en paysage sur mobile ---------- */
+function fsChange(){
+  const on=document.fullscreenElement===pl||document.webkitFullscreenElement===pl,o=screen.orientation;
+  if(!o||!o.lock||!matchMedia('(pointer:coarse)').matches)return;
+  if(on){if(!v.videoWidth||v.videoWidth>=v.videoHeight)o.lock('landscape').catch(()=>{})}
+  else{try{o.unlock()}catch(e){}}
+}
+document.addEventListener('fullscreenchange',fsChange);
+document.addEventListener('webkitfullscreenchange',fsChange);
+
+/* ---------- écran toujours allumé pendant la lecture (Wake Lock) ---------- */
+let wl=null,wlBusy=false;
+async function wlSync(){
+  if(!('wakeLock' in navigator)||wlBusy)return;
+  const want=!!cur&&!v.paused&&!v.ended&&!document.hidden;
+  if(want&&!wl){
+    wlBusy=true;
+    try{wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}catch(e){wl=null}
+    wlBusy=false;
+    if(wl&&(v.paused||v.ended||document.hidden))wlSync();
+  }else if(!want&&wl){try{await wl.release()}catch(e){}wl=null}
+}
+['play','playing','pause','ended','emptied'].forEach(n=>v.addEventListener(n,wlSync));
+document.addEventListener('visibilitychange',wlSync);
+
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
 async function loadMeta(c){
