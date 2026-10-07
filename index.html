@@ -464,6 +464,16 @@ $('#batchFile').onchange=async e=>{
   e.target.value='';$('#batchGo').click();
 };
 
+/* ---------- compteur de vues : 1 vue = 5 s de lecture réelle ---------- */
+let viewT=null,viewSent=false;
+const vid=(()=>{const r=()=>(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));try{let x=localStorage.getItem('flux-vid');if(!x){x=r();localStorage.setItem('flux-vid',x)}return x}catch(e){return r()}})();
+function sendView(){
+  if(viewSent||!cur)return;viewSent=true;
+  fetch('/api/view',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',vid}),keepalive:true}).catch(()=>{});
+}
+v.addEventListener('playing',()=>{clearTimeout(viewT);viewT=setTimeout(()=>{if(!v.paused)sendView()},5000)});
+v.addEventListener('pause',()=>clearTimeout(viewT));
+
 /* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
 const PASS_HASH='000937cc5efa748969146f517bcbc5af4ae8b9f87ca5f2db209d159f5b17a294';
 const AK='flux-auth';
@@ -497,7 +507,7 @@ function destroy(){
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);
 }
 function start(src,title,subs){
-  cur={src,title,subs};
+  cur={src,title,subs};viewSent=false;
   $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
   const u=mk(src,title,subs,true);
   $('#lnk').value=mk(src,title,subs,false);

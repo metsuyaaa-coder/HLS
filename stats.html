@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flux – Statistiques</title>
+<style>
+:root{--bg:#141414;--red:#e50914;--mu:#b3b3b3;--card:#1f1f1f;--line:#333}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#fff;font-family:"Netflix Sans","Helvetica Neue",Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:20px 4vw}
+.logo{color:var(--red);font-weight:900;font-size:30px;letter-spacing:-1px;text-decoration:none}
+.wrap{max-width:900px;margin:0 auto;padding:10px 20px 60px}
+h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
+.lead{color:var(--mu);margin:0 0 22px}
+.tot{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:22px}
+.tot div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.tot b{display:block;font-size:34px;font-variant-numeric:tabular-nums}
+.tot span{color:var(--mu);font-size:14px}
+.bar{display:flex;gap:8px;margin-bottom:14px}
+input{flex:1;padding:12px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:16px}
+input:focus{border-color:#fff;outline:0}
+button{font:inherit;color:#fff;background:rgba(109,109,110,.7);border:0;border-radius:8px;padding:10px 16px;cursor:pointer}
+button:hover{background:rgba(109,109,110,.45)}
+.list{display:grid;gap:8px}
+.row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+.row>div:first-child{min-width:0}
+.row b.t{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row small{display:block;color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
+.n{text-align:center;min-width:70px}
+.n b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.n span{color:var(--mu);font-size:12px}
+.msg{color:#ffa0a0;margin:14px 0}
+.empty{color:var(--mu);padding:30px 0;text-align:center}
+@media(max-width:560px){.row{grid-template-columns:1fr 1fr}.row>div:first-child{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<header><a class="logo" href="/">FLUX</a><a href="/" style="color:var(--mu)">← Retour au générateur</a></header>
+<div class="wrap">
+  <h1>Statistiques</h1>
+  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif).</p>
+  <div class="tot"><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
+  <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
+  <div class="msg" id="msg"></div>
+  <div class="list" id="list"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let data=[];
+const ago=t=>{if(!t)return'';const s=(Date.now()-t)/1000;if(s<60)return"à l'instant";if(s<3600)return'il y a '+Math.floor(s/60)+' min';if(s<86400)return'il y a '+Math.floor(s/3600)+' h';return'il y a '+Math.floor(s/86400)+' j'};
+function show(){
+  const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
+  const rows=data.filter(d=>!q||(d.title+' '+d.src).toLowerCase().includes(q));
+  if(!rows.length){const e=document.createElement('div');e.className='empty';e.textContent=data.length?'Aucun résultat.':'Aucune vue enregistrée pour le moment.';box.append(e);return}
+  rows.forEach(d=>{
+    const r=document.createElement('div');r.className='row';
+    const a=document.createElement('div'),t=document.createElement('b'),s=document.createElement('small');
+    t.className='t';t.textContent=d.title||'Sans titre';s.textContent=d.src+(d.last?'  ·  '+ago(d.last):'');
+    a.append(t,s);
+    const n=(v,l)=>{const x=document.createElement('div');x.className='n';x.innerHTML='<b></b><span></span>';x.firstChild.textContent=v;x.lastChild.textContent=l;return x};
+    r.append(a,n(d.plays,'vues'),n(d.viewers,'spectateurs'));box.append(r);
+  });
+}
+async function load(){
+  $('#msg').textContent='';
+  try{
+    const r=await fetch('/api/stats',{cache:'no-store'});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||r.status);
+    data=j.videos;
+    $('#tp').textContent=data.reduce((a,d)=>a+d.plays,0);
+    $('#tv').textContent=data.length;
+    show();
+  }catch(e){$('#msg').textContent='Impossible de charger les stats : '+e.message}
+}
+$('#rf').onclick=load;$('#q').oninput=show;load();
+</script>
+</body>
+</html>
