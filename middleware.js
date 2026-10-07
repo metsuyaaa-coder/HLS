@@ -27,6 +27,12 @@ async function redis(cmds) {
 }
 const toObj = a => { const o = {}; for (let i = 0; i < (a || []).length; i += 2) o[a[i]] = a[i + 1]; return o; };
 
+const day = () => new Date().toISOString().slice(0, 10);
+const addSecs = (src, sec) => {
+  const d = day();
+  return [['HINCRBY', 'secs', src, sec], ['HINCRBY', 'dsecs:' + d, src, sec], ['EXPIRE', 'dsecs:' + d, 3456000]];
+};
+
 async function view(request) {
   if (request.method !== 'POST') return new Response(null, { status: 405 });
   let b = {};
@@ -41,6 +47,8 @@ async function view(request) {
       ['PFADD', 'uniq:' + src, vid],
       ['HSET', 'titles', src, title],
       ['HSET', 'last', src, Date.now()],
+      ['HINCRBY', 'dviews:' + day(), src, 1],
+      ['EXPIRE', 'dviews:' + day(), 3456000],
     ]);
     return new Response(null, { status: 204 });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
@@ -58,24 +66,37 @@ async function live(request) {
   const vid = String(b.vid || '').slice(0, 80);
   if (!/^https?:\/\//i.test(src) || !vid || vid.includes('|')) return new Response(null, { status: 400 });
   const member = vid + '|' + src;
+  const sec = Math.max(0, Math.min(Math.round(+b.sec || 0), 600)); // secondes regardées depuis le dernier envoi
+  const extra = sec ? addSecs(src, sec) : [];
   try {
-    if (b.leave) await redis([['ZREM', 'live', member]]);
+    if (b.leave) await redis([['ZREM', 'live', member], ['HSET', 'titles', src, title], ...extra]);
     else await redis([
       ['ZADD', 'live', Date.now(), member],
       ['HSET', 'titles', src, title],
+      ...extra,
     ]);
     return new Response(null, { status: 204 });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
-async function stats() {
+async function stats(only) {
   try {
+    if (only) { // détail d'une vidéo : 14 derniers jours
+      const days = [], cmds = [];
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
+        days.push(d);
+        cmds.push(['HGET', 'dsecs:' + d, only], ['HGET', 'dviews:' + d, only]);
+      }
+      const r = await redis(cmds);
+      return json({ days: days.map((d, i) => ({ d, secs: +r[i * 2] || 0, views: +r[i * 2 + 1] || 0 })).reverse() });
+    }
     const now = Date.now();
-    const [, plays, titles, last, liveRaw] = (await redis([
+    const [, plays, titles, last, liveRaw, secs] = (await redis([
       ['ZREMRANGEBYSCORE', 'live', '-inf', now - LIVE_TTL],
       ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'],
-      ['ZRANGE', 'live', 0, -1],
-    ])).map((x, i) => (i >= 1 && i <= 3 ? toObj(x) : x));
+      ['ZRANGE', 'live', 0, -1], ['HGETALL', 'secs'],
+    ])).map((x, i) => ((i >= 1 && i <= 3) || i === 5 ? toObj(x) : x));
     const liveBy = {};
     let liveTotal = 0;
     for (const m of liveRaw || []) {
@@ -83,11 +104,11 @@ async function stats() {
       liveBy[s] = (liveBy[s] || 0) + 1;
       liveTotal++;
     }
-    const srcs = [...new Set([...Object.keys(plays), ...Object.keys(liveBy)])];
+    const srcs = [...new Set([...Object.keys(plays), ...Object.keys(liveBy), ...Object.keys(secs)])];
     const uniq = srcs.length ? await redis(srcs.map(s => ['PFCOUNT', 'uniq:' + s])) : [];
     const videos = srcs.map((s, i) => ({
       src: s, title: titles[s] || '', plays: +plays[s] || 0, viewers: uniq[i] || 0,
-      last: +last[s] || 0, live: liveBy[s] || 0,
+      last: +last[s] || 0, live: liveBy[s] || 0, secs: +secs[s] || 0,
     })).sort((a, b) => b.live - a.live || b.plays - a.plays);
     return json({ videos, liveTotal });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
@@ -110,6 +131,6 @@ export default async function middleware(request) {
     } catch (e) { ok = false; }
   }
   if (!embed && !ok) return new Response('Accès privé', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="Flux"' } });
-  if (u.pathname === '/api/stats') return stats();
+  if (u.pathname === '/api/stats') return stats(p.get('src'));
   return new Response(null, { headers: { 'x-middleware-next': '1' } });
 }

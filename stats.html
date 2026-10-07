@@ -13,7 +13,7 @@ header{display:flex;align-items:center;gap:16px;padding:20px 4vw}
 .wrap{max-width:900px;margin:0 auto;padding:10px 20px 60px}
 h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
 .lead{color:var(--mu);margin:0 0 22px}
-.tot{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px}
 .tot div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .tot b{display:block;font-size:34px;font-variant-numeric:tabular-nums}
 .tot span{color:var(--mu);font-size:14px}
@@ -23,7 +23,7 @@ input:focus{border-color:#fff;outline:0}
 button{font:inherit;color:#fff;background:rgba(109,109,110,.7);border:0;border-radius:8px;padding:10px 16px;cursor:pointer}
 button:hover{background:rgba(109,109,110,.45)}
 .list{display:grid;gap:8px}
-.row{display:grid;grid-template-columns:1fr auto auto auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+.row{cursor:pointer;display:grid;grid-template-columns:1fr auto auto auto auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
 .row>div:first-child{min-width:0}
 .row b.t{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row small{display:block;color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
@@ -34,24 +34,53 @@ button:hover{background:rgba(109,109,110,.45)}
 .dot.off{background:#666;animation:none}
 @keyframes pulse{70%{box-shadow:0 0 0 8px rgba(70,211,105,0)}100%{box-shadow:0 0 0 0 rgba(70,211,105,0)}}
 .n.lv b{color:#46d369}
+.row:hover{border-color:#666;background:#262626}
+.row:focus-visible{outline:2px solid #fff}
+.ov{position:fixed;inset:0;background:#000b;display:grid;place-items:center;padding:16px;z-index:10}
+.ov[hidden]{display:none}
+.pn{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;width:min(640px,100%);max-height:92vh;overflow:auto}
+.pn h2{margin:0 40px 4px 0;font-size:22px;line-height:1.25;overflow-wrap:anywhere}
+.pn .src{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere;margin-bottom:6px}
+.pn .lvb{color:#46d369;font-size:14px;font-weight:600;min-height:20px;margin-bottom:12px}
+.x{position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;font-size:18px;padding:0;line-height:1}
+.kp{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px}
+.kp div{background:#181818;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kp b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.kp .big{grid-column:1/-1}.kp .big b{font-size:34px;color:#fff}
+.kp span{color:var(--mu);font-size:13px}
+.pn h3{font-size:15px;margin:0 0 10px;color:var(--mu);font-weight:600}
+.ch{display:flex;align-items:flex-end;gap:5px;height:130px;padding-top:8px}
+.ch div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.ch i{display:block;width:100%;background:var(--red);border-radius:3px 3px 0 0;min-height:2px}
+.ch i.z{background:#333}
+.cl{display:flex;gap:5px;margin-top:6px}
+.cl span{flex:1;text-align:center;font-size:10px;color:var(--mu);min-width:0}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
-@media(max-width:560px){.tot{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr 1fr}.row>div:first-child{grid-column:1/-1}}
+@media(max-width:560px){.tot{grid-template-columns:1fr 1fr}.row{grid-template-columns:repeat(4,1fr);gap:8px}.row>div:first-child{grid-column:1/-1}}
 </style>
 </head>
 <body>
 <header><a class="logo" href="/">FLUX</a><a href="/" style="color:var(--mu)">← Retour au générateur</a></header>
 <div class="wrap">
   <h1>Statistiques</h1>
-  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif). « En direct » = lecture en cours à l'instant (actualisé toutes les 10 s).</p>
-  <div class="tot"><div><b id="tl"><i class="dot off" id="ld"></i><span id="tln" style="font-size:inherit;color:inherit">–</span></b><span>en direct maintenant</span></div><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
+  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif). « En direct » = lecture en cours à l'instant (actualisé toutes les 10 s). Le temps regardé compte les minutes réellement lues (sans les sauts) et n'existe que depuis cette mise à jour. Clique sur une vidéo pour voir le détail.</p>
+  <div class="tot"><div><b id="tt">–</b><span>temps total regardé</span></div><div><b id="tl"><i class="dot off" id="ld"></i><span id="tln" style="font-size:inherit;color:inherit">–</span></b><span>en direct maintenant</span></div><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
   <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
   <div class="msg" id="msg"></div>
   <div class="list" id="list"></div>
+  <div class="ov" id="ov" hidden><div class="pn" role="dialog" aria-modal="true" aria-labelledby="pt">
+    <button class="x" id="px" aria-label="Fermer">✕</button>
+    <h2 id="pt"></h2><div class="src" id="ps"></div><div class="lvb" id="pl"></div>
+    <div class="kp" id="pk"></div>
+    <h3>14 derniers jours : minutes regardées par jour</h3>
+    <div class="ch" id="pc"></div><div class="cl" id="pd"></div>
+  </div></div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
 let data=[];
+const dur=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60);if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+' h'+(r?' '+String(r).padStart(2,'0')+' min':'')};
 const ago=t=>{if(!t)return'';const s=(Date.now()-t)/1000;if(s<60)return"à l'instant";if(s<3600)return'il y a '+Math.floor(s/60)+' min';if(s<86400)return'il y a '+Math.floor(s/3600)+' h';return'il y a '+Math.floor(s/86400)+' j'};
 function show(){
   const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
@@ -63,7 +92,7 @@ function show(){
     t.className='t';t.textContent=d.title||'Sans titre';s.textContent=d.src+(d.last?'  ·  '+ago(d.last):'');
     a.append(t,s);
     const n=(v,l)=>{const x=document.createElement('div');x.className='n';x.innerHTML='<b></b><span></span>';x.firstChild.textContent=v;x.lastChild.textContent=l;return x};
-    const lv=n(d.live||0,'en direct');if(d.live)lv.classList.add('lv');r.append(a,lv,n(d.plays,'vues'),n(d.viewers,'spectateurs'));box.append(r);
+    const lv=n(d.live||0,'en direct');if(d.live)lv.classList.add('lv');r.append(a,lv,n(d.plays,'vues'),n(d.viewers,'spectateurs'),n(dur(d.secs),'regardé'));r.tabIndex=0;r.setAttribute('role','button');r.onclick=()=>openD(d.src);r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openD(d.src)}};box.append(r);
   });
 }
 async function load(){
@@ -75,10 +104,35 @@ async function load(){
     data=j.videos;
     const L=j.liveTotal||0;$('#tln').textContent=L;$('#ld').className='dot'+(L?'':' off');
     $('#tp').textContent=data.reduce((a,d)=>a+d.plays,0);
+    $('#tt').textContent=dur(data.reduce((a,d)=>a+(d.secs||0),0));
     $('#tv').textContent=data.length;
-    show();
+    show();if(openSrc)fillD();
   }catch(e){$('#msg').textContent='Impossible de charger les stats : '+e.message}
 }
+let openSrc=null;
+function fillD(){
+  const d=data.find(x=>x.src===openSrc);if(!d)return;
+  $('#pt').textContent=d.title||'Sans titre';$('#ps').textContent=d.src;
+  $('#pl').textContent=d.live?'● '+d.live+' en direct maintenant':'';
+  const k=(v,l,c)=>'<div'+(c?' class="'+c+'"':'')+'><b>'+v+'</b><span>'+l+'</span></div>';
+  $('#pk').innerHTML=k(dur(d.secs),'temps total regardé','big')+k(d.plays,'vues')+k(d.viewers,'spectateurs (approx.)')
+    +k(d.viewers?dur(d.secs/d.viewers):'–','moyenne par spectateur')+k(d.plays?dur(d.secs/d.plays):'–','moyenne par vue')
+    +(d.last?k(ago(d.last),'dernière vue','big'):'');
+}
+async function openD(src){
+  openSrc=src;fillD();$('#ov').hidden=false;$('#px').focus();
+  $('#pc').innerHTML='';$('#pd').innerHTML='';
+  try{
+    const r=await fetch('/api/stats?src='+encodeURIComponent(src),{cache:'no-store'});const j=await r.json();
+    if(!r.ok)throw 0;if(openSrc!==src)return;
+    const mx=Math.max(1,...j.days.map(x=>x.secs));
+    $('#pc').innerHTML=j.days.map(x=>'<div title="'+x.d+' : '+dur(x.secs)+' · '+x.views+' vue(s)"><i class="'+(x.secs?'':'z')+'" style="height:'+Math.max(2,Math.round(x.secs/mx*100))+'%"></i></div>').join('');
+    $('#pd').innerHTML=j.days.map(x=>'<span>'+x.d.slice(8)+'</span>').join('');
+  }catch(e){$('#pc').textContent='Détail indisponible.'}
+}
+function closeD(){openSrc=null;$('#ov').hidden=true}
+$('#px').onclick=closeD;$('#ov').onclick=e=>{if(e.target.id==='ov')closeD()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeD()});
 $('#rf').onclick=load;$('#q').oninput=show;load();setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>

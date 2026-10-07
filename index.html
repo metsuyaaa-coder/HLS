@@ -646,12 +646,23 @@ v.addEventListener('pause',()=>clearTimeout(viewT));
 
 /* ---------- spectateurs en direct : heartbeat toutes les 15 s tant que la lecture tourne ---------- */
 let liveI=null;
-function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,leave:!!leave})}
+/* temps réellement regardé (secondes de vidéo lues, sans les sauts) : envoyé avec chaque heartbeat */
+let wSec=0,wLast=null;
+const takeSec=()=>{const s=Math.floor(wSec);wSec-=s;return s};
+v.addEventListener('timeupdate',()=>{
+  if(v.paused||v.seeking||v.ended){wLast=null;return}
+  const t=v.currentTime;
+  if(wLast!==null){const d=t-wLast;if(d>0&&d<3)wSec+=d}
+  wLast=t;
+});
+['pause','seeking','seeked','waiting','ended'].forEach(n=>v.addEventListener(n,()=>{wLast=null}));
+function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,leave:!!leave,sec:takeSec()})}
 function liveBeat(){if(!cur||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
 function liveLeave(){clearInterval(liveI);liveI=null;if(!cur)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
 v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,15000)});
 v.addEventListener('pause',liveLeave);v.addEventListener('ended',liveLeave);
 window.addEventListener('pagehide',liveLeave);
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
 
 /* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
 const PASS_HASH='000937cc5efa748969146f517bcbc5af4ae8b9f87ca5f2db209d159f5b17a294';
@@ -688,6 +699,7 @@ function destroy(){
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);
 }
 function start(src,title,subs,queue){
+  if(cur&&wSec>=1)liveLeave();wLast=null;
   cur={src,title,subs,q:queue||[]};viewSent=false;
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
