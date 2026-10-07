@@ -1,7 +1,8 @@
 // middleware.js (racine du projet Vercel), tout-en-un : pas besoin de dossier api/.
 // Publics : les liens embed (e=1 + lien s=...), /api/view (compteur de vues) et /api/live (spectateurs en direct).
-// Protégés par SITE_PASSWORD : la page d'accueil, /stats.html et /api/stats.
-export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live'] };
+// /api/meta (GET) est public : le lecteur y lit l'intro / le générique / le titre enregistrés dans la bibliothèque.
+// Protégés par SITE_PASSWORD : la page d'accueil, /stats.html, /library.html, /api/stats, /api/library et l'écriture sur /api/meta.
+export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library'] };
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -88,6 +89,68 @@ async function live(request) {
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
+/* ---------- bibliothèque : réglages par vidéo (titre, intro, générique), lus par le lecteur ---------- */
+const okSrc = s => /^https?:\/\//i.test(s) && s.length <= 1500;
+const cleanI = x => (/^\d+-\d+$/.test(x) ? x : '');
+const cleanO = x => (/^\d+(-\d+)?$/.test(x) ? x : '');
+
+async function metaGet(p) {
+  const src = String(p.get('src') || '').slice(0, 1500);
+  if (!okSrc(src)) return json({});
+  try {
+    const [raw] = await redis([['HGET', 'meta', src]]);
+    return json(raw ? JSON.parse(raw) : {});
+  } catch (e) { return json({}); }
+}
+
+async function metaPost(request) {
+  if (request.method !== 'POST') return new Response(null, { status: 405 });
+  let b = {};
+  try { b = await request.json(); } catch (e) {}
+  const items = (Array.isArray(b.items) ? b.items : [b]).slice(0, 200)
+    .map(x => ({ ...x, src: String((x && x.src) || '').slice(0, 1500) })).filter(x => okSrc(x.src));
+  try {
+    const del = items.filter(x => x.del).map(x => x.src);
+    const upd = items.filter(x => !x.del);
+    const cmds = [];
+    if (upd.length) {
+      const [cur] = await redis([['HMGET', 'meta', ...upd.map(x => x.src)]]);
+      const args = [];
+      upd.forEach((x, i) => {
+        let m = {};
+        try { m = cur[i] ? JSON.parse(cur[i]) : {}; } catch (e) {}
+        if (typeof x.title === 'string') { if (x.title.trim()) m.t = x.title.trim().slice(0, 200); else delete m.t; }
+        if (typeof x.intro === 'string' && (x.intro === '' || cleanI(x.intro))) m.i = cleanI(x.intro); // valeur invalide : ignorée
+        if (typeof x.outro === 'string' && (x.outro === '' || cleanO(x.outro))) m.o = cleanO(x.outro);
+        m.u = Date.now();
+        args.push(x.src, JSON.stringify(m));
+      });
+      cmds.push(['HSET', 'meta', ...args]);
+    }
+    if (del.length) cmds.push(['HDEL', 'meta', ...del]);
+    if (cmds.length) await redis(cmds);
+    return json({ ok: true, n: items.length });
+  } catch (e) { return json({ error: String(e.message || e) }, 500); }
+}
+
+async function library() {
+  try {
+    const [meta, plays, titles, last, secs] = (await redis([
+      ['HGETALL', 'meta'], ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'], ['HGETALL', 'secs'],
+    ])).map(toObj);
+    const srcs = [...new Set([...Object.keys(meta), ...Object.keys(plays), ...Object.keys(titles)])];
+    const videos = srcs.map(s => {
+      let m = {};
+      try { m = meta[s] ? JSON.parse(meta[s]) : {}; } catch (e) {}
+      return {
+        src: s, title: m.t || titles[s] || '', intro: m.i === undefined ? null : m.i, outro: m.o === undefined ? null : m.o,
+        saved: !!meta[s], updated: m.u || 0, plays: +plays[s] || 0, secs: +secs[s] || 0, last: +last[s] || 0,
+      };
+    }).sort((a, b) => Math.max(b.updated, b.last) - Math.max(a.updated, a.last));
+    return json({ videos });
+  } catch (e) { return json({ error: String(e.message || e) }, 500); }
+}
+
 async function stats(only) {
   try {
     if (only) { // détail d'une vidéo : 14 derniers jours
@@ -135,6 +198,7 @@ export default async function middleware(request) {
   const u = new URL(request.url), p = u.searchParams;
   if (u.pathname === '/api/view') return view(request);
   if (u.pathname === '/api/live') return live(request);
+  if (u.pathname === '/api/meta' && request.method === 'GET') return metaGet(p);
 
   const home = u.pathname === '/' || u.pathname === '/index.html';
   const embed = home && (p.get('e') || p.get('embed')) === '1' && (p.get('s') || p.get('src'));
@@ -149,5 +213,7 @@ export default async function middleware(request) {
   }
   if (!embed && !ok) return new Response('Accès privé', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="Flux"' } });
   if (u.pathname === '/api/stats') return stats(p.get('src'));
+  if (u.pathname === '/api/library') return library();
+  if (u.pathname === '/api/meta') return metaPost(request);
   return new Response(null, { headers: { 'x-middleware-next': '1' } });
 }

@@ -21,6 +21,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 header{display:flex;align-items:center;padding:20px 4vw}
 .tab{margin-left:auto;color:var(--mu);text-decoration:none;font-size:15px;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid #333}
 .tab:hover{color:#fff;border-color:#fff}
+.tab+.tab{margin-left:8px}
 #home{min-height:100%;background:radial-gradient(ellipse at 50% -10%,rgba(229,9,20,.35),transparent 60%),linear-gradient(#000a,var(--bg))}
 .wrap{max-width:640px;margin:0 auto;padding:6vh 20px 60px}
 h1{font-size:clamp(30px,6vw,48px);line-height:1.1;margin:0 0 12px;font-weight:800}
@@ -230,7 +231,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
 </section>
 
 <section id="home" hidden>
-  <header><a class="logo" href="?">FLUX</a><a class="tab" href="/stats.html">📊 Statistiques</a></header>
+  <header><a class="logo" href="?">FLUX</a><a class="tab" href="/library.html">📚 Bibliothèque</a><a class="tab" href="/stats.html">📊 Statistiques</a></header>
   <div class="wrap">
     <h1>Colle un lien .m3u8, la lecture démarre ici.</h1>
     <p class="lead">Lecteur HLS avec sous-titres, Chromecast et code embed qui garde la lecture dans ce lecteur.</p>
@@ -374,6 +375,8 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Générique / outro (début, la fin est facultative)
         <div class="ed2"><input type="text" id="shO" placeholder="42:10" autocomplete="off"><button class="ghost" type="button" id="shOa">Début ici</button><button class="ghost" type="button" id="shOb">Fin ici</button></div>
       </label>
+      <div class="row2"><button class="btn" type="button" id="shSave" style="padding:11px 16px;font-size:15px">💾 Enregistrer dans la bibliothèque</button><a class="ghost" href="/library.html">Ouvrir la bibliothèque</a></div>
+      <p>Enregistrer applique le titre, l'intro et le générique à <b>tous les liens</b> de cette vidéo, y compris ceux déjà partagés ou intégrés ailleurs.</p>
       <div class="msg" id="shMsg"></div>
     </div>
     <label>Lien direct
@@ -546,7 +549,9 @@ $('#f').onsubmit=e=>{
   const iv=$('#introIn').value.trim(),intro=normIntro(iv),ov=$('#outroIn').value.trim(),outro=normOutro(ov);
   if(iv&&!intro){$('#msg').textContent="Intro invalide : écris par exemple 0:45-1:50 (début-fin).";return}
   if(ov&&!outro){$('#msg').textContent="Générique invalide : écris par exemple 42:10 (début) ou 42:10-44:00.";return}
-  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false,null,intro,outro));
+  const ft=smartName($('#ttlIn').value.trim())||guessTitle(src);
+  saveMeta([Object.assign({src,title:ft},intro?{intro}:{},outro?{outro}:{})]).catch(()=>{});
+  history.pushState(null,'',mk(src,ft,subs,false,null,intro,outro));
   route();
 };
 /* intro : "0:45-1:50" (ou 45-110) -> "45-110" */
@@ -677,6 +682,7 @@ $('#batchGo').onclick=()=>{
   libAdd(batch);
   $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
   renderBatch();
+  if(batch.length)saveMeta(batch.map(b=>Object.assign({src:b.src,title:b.title||guessTitle(b.src)},b.intro?{intro:b.intro}:{},b.outro?{outro:b.outro}:{}))).catch(()=>{});
 };
 $('#bintro').onchange=$('#bouro').onchange=$('#bover').onchange=()=>{if(batch.length)$('#batchGo').click()};
 $('#bkind').onchange=()=>{if(batch.length)renderBatch()};
@@ -761,7 +767,7 @@ function start(src,title,subs,queue,intro,outro){
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
   $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
-  refreshShare();fillEd();
+  refreshShare();fillEd();loadMeta(cur);
   v.crossOrigin='anonymous';
   subs.forEach((s,i)=>addExt(s,i===0));
   if(pos)showResume(pos);
@@ -1159,6 +1165,20 @@ function skpSync(){
 skp.onclick=()=>{if(cur&&cur.introT){v.currentTime=cur.introT[1];skp.hidden=true}};
 sko.onclick=()=>{if(cur&&cur.outroT){const o=cur.outroT,d=v.duration;v.currentTime=isFinite(o[1])?o[1]:Math.max(0,(isFinite(d)?d:0)-0.3);sko.hidden=true}};
 
+/* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
+const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+async function loadMeta(c){
+  try{
+    const r=await fetch('/api/meta?src='+encodeURIComponent(c.src),{cache:'no-store'});
+    if(!r.ok)return;
+    const m=await r.json();
+    if(cur!==c||!m||typeof m!=='object')return;
+    if(typeof m.i==='string'){c.intro=m.i;c.introT=introT(m.i)}
+    if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
+    if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}
+    refreshShare();fillEd();skpSync();
+  }catch(e){}
+}
 /* liens de partage + éditeur d'intro / générique (utile pour modifier un lien déjà existant) */
 const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
 function refreshShare(){
@@ -1186,6 +1206,15 @@ function markEd(inp,idx){
   inp.value=(a!=null?fmt(a):'')+(b!=null?'-'+fmt(b):'');applyEd();
 }
 $('#shI').onchange=$('#shO').onchange=applyEd;
+$('#shSave').onclick=async()=>{
+  if(!cur)return;const m=$('#shMsg');applyEd();if(m.textContent)return;
+  try{
+    const r=await saveMeta([{src:cur.src,title:cur.title||'',intro:cur.intro||'',outro:cur.outro||''}]);
+    if(!r.ok)throw new Error(r.status);
+    m.style.color='#46d369';m.textContent='✓ Enregistré : tous les liens de cette vidéo utilisent ces réglages.';
+    setTimeout(()=>{m.textContent='';m.style.color=''},4000);
+  }catch(e){m.style.color='';m.textContent="Impossible d'enregistrer ("+(e.message||e)+"). Vérifie que tu es connecté.";}
+};
 $('#shIa').onclick=()=>markEd($('#shI'),0);$('#shIb').onclick=()=>markEd($('#shI'),1);
 $('#shOa').onclick=()=>markEd($('#shO'),0);$('#shOb').onclick=()=>markEd($('#shO'),1);
 

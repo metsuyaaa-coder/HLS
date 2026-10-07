@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flux – Bibliothèque</title>
+<style>
+:root{--bg:#141414;--red:#e50914;--mu:#b3b3b3;--card:#1f1f1f;--line:#333;--ok:#46d369}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#fff;font-family:"Netflix Sans","Helvetica Neue",Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:20px 4vw;flex-wrap:wrap}
+.logo{color:var(--red);font-weight:900;font-size:30px;letter-spacing:-1px;text-decoration:none}
+header a:not(.logo){color:var(--mu);text-decoration:none}
+header a:not(.logo):hover{color:#fff}
+.wrap{max-width:980px;margin:0 auto;padding:10px 20px 70px}
+h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
+.lead{color:var(--mu);margin:0 0 22px;line-height:1.5}
+.bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+input[type=text],input[type=url]{width:100%;padding:11px 12px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:15px}
+input:focus{border-color:#fff;outline:0}
+.bar input{flex:1;min-width:180px;width:auto}
+button,.btn{font:inherit;color:#fff;background:rgba(109,109,110,.7);border:0;border-radius:8px;padding:10px 14px;cursor:pointer;font-size:14px;text-decoration:none;display:inline-block;white-space:nowrap}
+button:hover,.btn:hover{background:rgba(109,109,110,.45)}
+button:disabled{opacity:.4;cursor:default}
+button.red{background:var(--red);font-weight:700}
+button.red:hover:not(:disabled){background:#f6121d}
+details.add{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+details.add summary{cursor:pointer;font-weight:600}
+.addf{display:grid;gap:8px;margin-top:12px}
+.msg{color:#ffa0a0;margin:12px 0;min-height:1em}
+.msg.ok{color:var(--ok)}
+.cnt{color:var(--mu);font-size:14px;margin:0 0 10px}
+.list{display:grid;gap:12px}
+.vid{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:10px}
+.vid.dirty{border-color:#8a6d00}
+.top{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.src{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.tm{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tm label{display:grid;gap:5px;font-size:13px;color:var(--mu)}
+.meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;color:var(--mu);font-size:13px}
+.badge{color:var(--ok);font-weight:600}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.empty{color:var(--mu);padding:30px 0;text-align:center}
+@media(max-width:560px){.top{grid-template-columns:1fr}.tm{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><a class="logo" href="/">FLUX</a><a href="/">← Générateur</a><a href="/stats.html">📊 Statistiques</a></header>
+<div class="wrap">
+  <h1>Bibliothèque</h1>
+  <p class="lead">Toutes tes vidéos au même endroit. Ce que tu enregistres ici (titre, intro, générique) s'applique à <b>tous les liens</b> de la vidéo, y compris ceux déjà partagés ou intégrés ailleurs. Format des temps : <b>0:45-1:50</b> pour l'intro, <b>42:10</b> pour le début du générique. Laisse vide pour ne rien changer, écris <b>aucune</b> pour supprimer.</p>
+
+  <details class="add"><summary>➕ Ajouter une vidéo</summary>
+    <div class="addf">
+      <input type="url" id="nsrc" placeholder="https://exemple.com/video/master.m3u8" autocomplete="off">
+      <input type="text" id="ntit" placeholder="Titre (facultatif)" autocomplete="off">
+      <div><button class="red" id="nadd" type="button">Ajouter</button></div>
+    </div>
+  </details>
+
+  <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf" type="button">Actualiser</button></div>
+  <div class="msg" id="msg" role="alert"></div>
+  <p class="cnt" id="cnt"></p>
+  <div class="list" id="list"></div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let data=[];
+
+/* ---- temps ---- */
+const tSec=s=>{const p=String(s).trim().split(':');if(p.length>3||p.some(x=>!/^\d+(?:[.,]\d+)?$/.test(x)))return null;return p.reduce((a,x)=>a*60+parseFloat(x.replace(',','.')),0)};
+const normIntro=x=>{const m=String(x||'').match(/^\s*([\d:.,]+)\s*(?:[-–—>]+|à|to)\s*([\d:.,]+)\s*$/i);if(!m)return'';const a=tSec(m[1]),b=tSec(m[2]);if(a==null||b==null||b<=a)return'';return Math.round(a)+'-'+Math.round(b)};
+const normOutro=x=>{x=String(x||'').trim();if(/^[\d:.,]+$/.test(x)){const a=tSec(x);return a==null?'':String(Math.round(a))}return normIntro(x)};
+const fmt=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?h+':'+String(m).padStart(2,'0')+':'+c:m+':'+c};
+const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
+const dur=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60);if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+' h'+(r?' '+String(r).padStart(2,'0')+' min':'')};
+const ago=t=>{if(!t)return'';const s=(Date.now()-t)/1000;if(s<60)return"à l'instant";if(s<3600)return'il y a '+Math.floor(s/60)+' min';if(s<86400)return'il y a '+Math.floor(s/3600)+' h';return'il y a '+Math.floor(s/86400)+' j'};
+
+/* ---- liens (même format que le générateur) ---- */
+const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
+const noHttps=u=>u.replace(/^https:\/\//i,'');
+const link=(v,embed)=>location.origin+'/?s='+encQ(noHttps(v.src))+(v.title?'&t='+encQ(v.title):'')+(v.intro?'&i='+v.intro:'')+(v.outro?'&o='+v.outro:'')+(embed?'&e=1':'');
+async function copy(t,b){
+  try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();document.execCommand('copy');a.remove()}
+  const o=b.textContent;b.textContent='Copié ✓';setTimeout(()=>b.textContent=o,1500);
+}
+const post=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+
+function note(t,ok){const m=$('#msg');m.textContent=t;m.className='msg'+(ok?' ok':'');if(ok)setTimeout(()=>{if(m.textContent===t)m.textContent=''},3500)}
+
+function card(v){
+  const box=document.createElement('div');box.className='vid';
+  const top=document.createElement('div');top.className='top';
+  const ti=document.createElement('input');ti.type='text';ti.value=v.title||'';ti.placeholder='Sans titre';ti.setAttribute('aria-label','Titre');
+  const sv=document.createElement('button');sv.className='red';sv.textContent='Enregistrer';sv.disabled=true;
+  top.append(ti,sv);
+  const src=document.createElement('div');src.className='src';src.textContent=v.src;
+  const tm=document.createElement('div');tm.className='tm';
+  const mkf=(lab,val,ph)=>{const l=document.createElement('label'),i=document.createElement('input');i.type='text';i.value=val;i.placeholder=ph;i.autocomplete='off';l.append(lab,i);return[l,i]};
+  const [li,ii]=mkf('Intro (début-fin)',rng(v.intro),'0:45-1:50');
+  const [lo,io]=mkf('Générique de fin (début, fin facultative)',rng(v.outro),'42:10');
+  tm.append(li,lo);
+  const meta=document.createElement('div');meta.className='meta';
+  const info=()=>{
+    meta.textContent='';
+    if(v.saved){const b=document.createElement('span');b.className='badge';b.textContent='● Réglages enregistrés';meta.append(b)}
+    const parts=[v.plays+' vue'+(v.plays>1?'s':''),dur(v.secs)+' regardés'];
+    if(v.last)parts.push('dernière vue '+ago(v.last));
+    const s=document.createElement('span');s.textContent=parts.join(' · ');meta.append(s);
+  };info();
+  const acts=document.createElement('div');acts.className='acts';
+  const op=document.createElement('a');op.className='btn';op.textContent='Régler dans le lecteur';op.target='_blank';op.rel='noopener';
+  const cl=document.createElement('button');cl.textContent='Copier le lien';
+  const ce=document.createElement('button');ce.textContent='Copier embed';
+  const rm=document.createElement('button');rm.textContent='Retirer les réglages';rm.hidden=!v.saved;
+  const upd=()=>{op.href=link(v,false)};upd();
+  cl.onclick=()=>copy(link(v,false),cl);
+  ce.onclick=()=>copy(link(v,true),ce);
+  acts.append(op,cl,ce,rm);
+  box.append(top,src,tm,meta,acts);
+
+  /* champs modifiés seulement : on n'écrase jamais ce qu'on n'a pas touché */
+  const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro)});
+  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o;sv.disabled=!d;box.classList.toggle('dirty',d)};
+  [ti,ii,io].forEach(x=>x.oninput=dirty);
+  const clear=x=>/^(aucune?|none|off|non|supprimer)$/i.test(x.trim());
+  sv.onclick=async()=>{
+    const o=orig(),it={src:v.src};
+    let ni=v.intro,no=v.outro;
+    if(ti.value.trim()!==o.t)it.title=ti.value.trim();
+    if(ii.value.trim()!==o.i){const x=ii.value.trim();const n=clear(x)||!x?'':normIntro(x);if(x&&!clear(x)&&!n)return note('Intro invalide : écris par exemple 0:45-1:50.');it.intro=n;ni=n}
+    if(io.value.trim()!==o.o){const x=io.value.trim();const n=clear(x)||!x?'':normOutro(x);if(x&&!clear(x)&&!n)return note('Générique invalide : écris par exemple 42:10.');it.outro=n;no=n}
+    sv.disabled=true;
+    try{
+      const r=await post([it]);if(!r.ok)throw new Error(r.status);
+      if('title' in it)v.title=it.title;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
+      ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();
+      note('✓ « '+(v.title||'Sans titre')+' » enregistré : tous ses liens sont mis à jour.',true);
+    }catch(e){sv.disabled=false;note("Impossible d'enregistrer ("+(e.message||e)+").")}
+  };
+  rm.onclick=async()=>{
+    if(!confirm('Retirer les réglages enregistrés (titre, intro, générique) de cette vidéo ? Ses liens retrouveront ce qu\'ils contiennent eux-mêmes.'))return;
+    try{
+      const r=await post([{src:v.src,del:true}]);if(!r.ok)throw new Error(r.status);
+      v.saved=false;v.intro=null;v.outro=null;ii.value='';io.value='';rm.hidden=true;info();upd();dirty();
+      note('Réglages retirés.',true);
+    }catch(e){note('Impossible de retirer ('+(e.message||e)+').')}
+  };
+  return box;
+}
+
+function show(){
+  const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
+  const rows=data.filter(d=>!q||(d.title+' '+d.src).toLowerCase().includes(q));
+  $('#cnt').textContent=data.length?rows.length+' / '+data.length+' vidéo'+(data.length>1?'s':''):'';
+  if(!rows.length){const e=document.createElement('div');e.className='empty';e.textContent=data.length?'Aucun résultat.':'Aucune vidéo pour le moment. Génère un lien depuis la page d\'accueil ou ajoute une vidéo ci-dessus.';box.append(e);return}
+  rows.forEach(v=>box.append(card(v)));
+}
+async function load(){
+  $('#msg').textContent='';
+  try{
+    const r=await fetch('/api/library',{cache:'no-store'}),j=await r.json();
+    if(!r.ok)throw new Error(j.error||r.status);
+    data=j.videos;show();
+  }catch(e){note('Impossible de charger la bibliothèque : '+e.message)}
+}
+$('#nadd').onclick=async()=>{
+  const s=$('#nsrc').value.trim();
+  if(!/^https?:\/\//i.test(s))return note('Le lien doit commencer par http:// ou https://');
+  try{
+    const r=await post([{src:s,title:$('#ntit').value.trim()}]);if(!r.ok)throw new Error(r.status);
+    $('#nsrc').value='';$('#ntit').value='';note('✓ Vidéo ajoutée.',true);load();
+  }catch(e){note("Impossible d'ajouter ("+(e.message||e)+").")}
+};
+$('#rf').onclick=load;$('#q').oninput=show;load();
+</script>
+</body>
+</html>
