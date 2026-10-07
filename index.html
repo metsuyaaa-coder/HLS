@@ -153,7 +153,11 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 
 /* bulle de temps au survol de la barre */
 .seekrow{position:relative}
-#stip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);background:#000d;border:1px solid #ffffff33;border-radius:6px;padding:4px 9px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+#stip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);background:#000d;border:1px solid #ffffff33;border-radius:6px;padding:4px 9px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+
+#stip #pv{display:none;position:static;inset:auto;width:clamp(120px,16vw,176px);height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:4px;background:#000;pointer-events:none}
+#stip.img #pv{display:block}
+#stip.img{padding:4px 4px 5px}
 
 /* reprise de lecture */
 #rs{position:absolute;left:clamp(16px,4%,56px);bottom:112px;z-index:3;display:flex;align-items:center;flex-wrap:wrap;gap:clamp(10px,1.6vw,18px);max-width:calc(100% - 32px)}
@@ -165,6 +169,8 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #nx[hidden]{display:none}
 #skp,#sko{position:absolute;right:clamp(16px,4%,56px);bottom:112px;z-index:3;animation:skin .25s ease-out}
 #skp[hidden],#sko[hidden],.end #skp,.end #sko,.locked #skp,.locked #sko{display:none}
+#skp,#sko{transition:opacity .3s,visibility .3s}
+.idle #skp,.idle #sko,.psd #skp,.psd #sko{opacity:0;visibility:hidden;pointer-events:none;animation:none}
 @keyframes skin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){#skp,#sko{animation:none}}
 .ed{display:grid;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
@@ -187,10 +193,8 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
-#mkl{position:absolute;height:9px;pointer-events:none;z-index:0}
+#mkl{position:absolute;height:4px;pointer-events:none;z-index:0}
 #mkl i{position:absolute;top:0;height:4px;border-radius:2px;background:#f5b800}
-#mkl i.lp{top:5px;background:#3ea6ff}
-.ab.on{color:#3ea6ff}
 
 /* ===== lot : plusieurs liens ===== */
 .box{background:rgba(0,0,0,.7);border:1px solid var(--line);border-radius:12px;padding:24px;display:grid;gap:16px;margin-top:24px}
@@ -356,14 +360,13 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
         <div class="bot">
           <div class="seekrow">
             <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position">
-            <span id="stip" hidden></span>
+            <div id="stip" hidden><video id="pv" muted playsinline preload="auto" disablepictureinpicture tabindex="-1"></video><span id="stt"></span></div>
             <div id="mkl"></div>
             <span id="tm">0:00</span>
           </div>
           <div class="acts">
             <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
             <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
-            <button class="ab" id="lp" aria-label="Boucle A-B"><span data-i="loop"></span><span id="lpl">Boucle A-B</span></button>
             <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
             <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
             <button class="ib" id="fs" aria-label="Plein écran" data-i="fs"></button>
@@ -418,7 +421,6 @@ const ARC='<path d="M12 5V1l5 5-5 5V7c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6h2c0 4
 const IC={
 play:'<path d="M7 4v16l13-8z"/>',
 skip:'<path d="M5 4l10 8-10 8V4zm11 0h3v16h-3V4z"/>',
-loop:'<path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>',
 replay:'<path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>',
 pause:'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>',
 vol:'<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>',
@@ -774,11 +776,11 @@ window.addEventListener('popstate',route);
 function destroy(){
   if(hls){hls.destroy();hls=null}
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
-  ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);lpReset();
+  ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);pvKill();
 }
 function start(src,title,subs,queue,intro,outro){
   if(cur&&wSec>=1)liveLeave();wLast=null;
-  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;lpReset();
+  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
@@ -1185,9 +1187,9 @@ function skpSync(){
 skp.onclick=()=>{if(cur&&cur.introT){v.currentTime=cur.introT[1];skp.hidden=true}};
 sko.onclick=()=>{if(cur&&cur.outroT){const o=cur.outroT,d=v.duration;v.currentTime=isFinite(o[1])?o[1]:Math.max(0,(isFinite(d)?d:0)-0.3);sko.hidden=true}};
 
-/* ---------- marqueurs sur la barre + boucle A-B ---------- */
-const lp={a:null,b:null,on:false};let lpPrev=0,mkKey='';
-const mkl=$('#mkl'),lpb=$('#lp'),lpl=$('#lpl');
+/* ---------- marqueurs d'intro / générique sous la barre ---------- */
+let mkKey='';
+const mkl=$('#mkl');
 function mkLayout(){
   mkl.style.left=(seek.offsetLeft+11)+'px';
   mkl.style.width=Math.max(0,seek.offsetWidth-22)+'px';
@@ -1198,40 +1200,15 @@ window.addEventListener('resize',mkLayout);
 function mkSync(force){
   const d=v.duration,ok=isFinite(d)&&d>0;
   const i=ok&&cur&&cur.introT,o=ok&&cur&&cur.outroT;
-  const key=[ok?d:0,i?i.join():'',o?o.join():'',lp.a,lp.b,lp.on].join('|');
+  const key=[ok?d:0,i?i.join():'',o?o.join():''].join('|');
   if(!force&&key===mkKey)return;
   mkKey=key;mkl.textContent='';
   if(!ok)return;
-  const seg=(a,b,c)=>{const e=el('i',c);e.style.left=Math.max(0,a/d*100)+'%';e.style.width=Math.max(.4,(Math.min(b,d)-a)/d*100)+'%';mkl.append(e)};
+  const seg=(a,b)=>{const e=el('i');e.style.left=Math.max(0,a/d*100)+'%';e.style.width=Math.max(.4,(Math.min(b,d)-a)/d*100)+'%';mkl.append(e)};
   if(i)seg(i[0],i[1]);
   if(o)seg(o[0],isFinite(o[1])?o[1]:d);
-  if(lp.a!=null)seg(lp.a,lp.b!=null?lp.b:lp.a,'lp');
   mkLayout();
 }
-function lpLabel(){
-  lpl.textContent=lp.on?'Boucle '+fmt(lp.a)+'–'+fmt(lp.b):lp.a!=null?'A '+fmt(lp.a)+' · choisir B':'Boucle A-B';
-  lpb.classList.toggle('on',lp.a!=null);
-}
-function lpReset(){lp.a=lp.b=null;lp.on=false;lpLabel();mkSync()}
-function lpCheck(){
-  if(!lp.on)return;
-  const t=v.currentTime;
-  if(!v.paused&&!v.seeking&&lpPrev<lp.b&&t>=lp.b&&t-lpPrev<1.5){v.currentTime=lp.a;lpPrev=lp.a;return}
-  lpPrev=t;
-}
-function lpTick(){if(!lp.on)return;lpCheck();requestAnimationFrame(lpTick)}
-v.addEventListener('timeupdate',lpCheck);
-function lpClick(){
-  const d=v.duration;
-  if(!isFinite(d)||!d){toast('Boucle indisponible ici');return}
-  if(lp.a!=null&&lp.on){lpReset();toast('Boucle désactivée');return}
-  const t=v.currentTime;
-  if(lp.a==null){lp.a=t;toast('Point A : '+fmt(t)+' · clique à nouveau pour fixer B')}
-  else if(t<=lp.a+1){toast('B doit être après A');return}
-  else{lp.b=Math.min(t,d-.3);lp.on=true;v.currentTime=lp.a;lpPrev=lp.a;toast('Boucle '+fmt(lp.a)+' → '+fmt(lp.b));requestAnimationFrame(lpTick)}
-  lpLabel();mkSync();
-}
-lpb.onclick=lpClick;
 mkLayout();
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
@@ -1342,12 +1319,40 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)savePos(tru
 
 /* ---------- bulle de temps au survol de la barre ---------- */
 const stip=$('#stip');
+/* aperçu image : 2e lecteur muet (qualité la plus basse), chargé au premier survol */
+const pv=$('#pv');let pvH=null,pvFail=false,pvOn=false,pvT=0,pvTm=0;
+function pvKill(){
+  clearTimeout(pvTm);pvOn=false;pvFail=false;
+  if(pvH){try{pvH.destroy()}catch(e){}pvH=null}
+  try{pv.pause();pv.removeAttribute('src');pv.load()}catch(e){}
+  if(typeof stip!=='undefined')stip.classList.remove('img');
+}
+function pvInit(){
+  if(pvOn||pvFail||!cur)return;pvOn=true;pv.crossOrigin='anonymous';
+  const bad=()=>{pvFail=true;stip.classList.remove('img')};
+  pv.onloadeddata=()=>stip.classList.add('img');pv.onerror=bad;
+  if(window.Hls&&Hls.isSupported()){
+    pvH=new Hls({startLevel:0,capLevelToPlayerSize:true,maxBufferLength:3,maxMaxBufferLength:6,backBufferLength:4,enableWebVTT:false,enableCEA708Captions:false,startPosition:0});
+    pvH.on(Hls.Events.MANIFEST_PARSED,()=>{pvH.autoLevelCapping=0});
+    pvH.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal){try{pvH.destroy()}catch(e){}pvH=null;bad()}});
+    pvH.loadSource(cur.src);pvH.attachMedia(pv);
+  }else if(pv.canPlayType('application/vnd.apple.mpegurl'))pv.src=cur.src;
+  else bad();
+}
+function pvSeek(t){
+  const go=()=>{pvT=performance.now();try{pv.currentTime=t}catch(e){}};
+  clearTimeout(pvTm);
+  const w=120-(performance.now()-pvT);
+  if(w<=0)go();else pvTm=setTimeout(go,w);
+}
 function tipAt(e){
   const d=v.duration;if(!isFinite(d)||!d){stip.hidden=true;return}
   const r=seek.getBoundingClientRect(),row=seek.parentElement.getBoundingClientRect(),th=11;
   const f=Math.max(0,Math.min(1,(e.clientX-r.left-th)/Math.max(1,r.width-2*th)));
-  stip.textContent=fmt(f*d);stip.hidden=false;
-  stip.style.left=(r.left-row.left+th+f*(r.width-2*th))+'px';
+  $('#stt').textContent=fmt(f*d);stip.hidden=false;
+  pvInit();if(pvOn&&!pvFail)pvSeek(f*d);
+  const x=r.left-row.left+th+f*(r.width-2*th),hw=stip.offsetWidth/2;
+  stip.style.left=Math.max(hw-10,Math.min(row.width+10-hw,x))+'px';
 }
 seek.addEventListener('pointermove',tipAt);
 seek.addEventListener('pointerdown',tipAt);
@@ -1376,7 +1381,6 @@ document.addEventListener('keydown',e=>{
   else if(k==='arrowdown')v.volume=Math.max(0,v.volume-.1);
   else if(k==='m')v.muted=!v.muted;
   else if(k==='f')fs();
-  else if(k==='l')lpClick();
   else if(k==='c')setSub(curSub?null:(subList()[0]||null));
   else h=false;
   if(h){e.preventDefault();wake()}
