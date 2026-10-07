@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flux – Lecteur HLS</title>
+<script>
+/* Google Cast : le callback doit exister avant le chargement du SDK */
+window.__onGCastApiAvailable=function(ok){if(ok&&window.initCast)initCast()};
+</script>
+<script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+<style>
+:root{--bg:#141414;--red:#e50914;--mu:#b3b3b3;--card:#1f1f1f;--line:#333;box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:#fff;font-family:"Netflix Sans","Helvetica Neue",Helvetica,Arial,sans-serif}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.logo{color:var(--red);font-weight:900;font-size:30px;letter-spacing:-1px;text-decoration:none}
+header{display:flex;align-items:center;padding:20px 4vw}
+#home{min-height:100%;background:radial-gradient(ellipse at 50% -10%,rgba(229,9,20,.35),transparent 60%),linear-gradient(#000a,var(--bg))}
+.wrap{max-width:640px;margin:0 auto;padding:6vh 20px 60px}
+h1{font-size:clamp(30px,6vw,48px);line-height:1.1;margin:0 0 12px;font-weight:800}
+.lead{color:var(--mu);font-size:18px;margin:0 0 28px;line-height:1.4}
+form{background:rgba(0,0,0,.7);border:1px solid var(--line);border-radius:12px;padding:24px;display:grid;gap:16px}
+label{display:grid;gap:6px;font-size:14px;color:var(--mu)}
+input[type=text],input[type=url],input[type=password]{width:100%;padding:14px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:16px}
+input[type=text]:focus,input[type=url]:focus,input[type=password]:focus{border-color:#fff;outline:0}
+.sub{display:grid;grid-template-columns:1fr 2fr auto;gap:8px}
+.btn{background:var(--red);color:#fff;font-weight:700;padding:14px 20px;border-radius:8px;font-size:17px}
+.btn:hover{background:#f6121d}
+.ghost{background:rgba(109,109,110,.7);padding:10px 14px;border-radius:8px;font-size:14px;color:#fff}
+.ghost:hover{background:rgba(109,109,110,.45)}
+.link{color:var(--mu);text-align:left;font-size:14px;text-decoration:underline}
+.msg{color:#ffa0a0;font-size:14px;min-height:1em}
+
+/* ===== lecteur ===== */
+.stage{max-width:1280px;margin:0 auto;padding:0 4vw}
+.player{position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;user-select:none;-webkit-user-select:none;border-radius:14px;touch-action:manipulation}
+.player:fullscreen{aspect-ratio:auto;border-radius:0}
+.player video{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;object-fit:contain;transition:filter .15s}
+video::cue{background:transparent;color:#fff;font-family:"Helvetica Neue",Arial,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000,1px 1px 4px #000}
+#hit{position:absolute;inset:0}
+.ui{position:absolute;inset:0;pointer-events:none;transition:opacity .3s}
+.ui button,.ui .seekrow,.ui .bw{pointer-events:auto}
+.idle .ui{opacity:0}.idle .ui *{pointer-events:none!important}.idle{cursor:none}
+.top{position:absolute;inset:0 0 auto 0;display:flex;align-items:center;gap:10px;padding:18px 22px 40px;background:linear-gradient(#000b,transparent)}
+.mark{color:var(--red);font-weight:900;font-size:34px;line-height:1;letter-spacing:-2px;transform:scaleX(.8)}
+#ttl{flex:1;font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:4px}
+.ib{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;flex:none;transition:background .15s,transform .15s}
+.ib:hover{background:#ffffff26}.ib:active{transform:scale(.92)}
+.ib svg{width:26px;height:26px}
+.ib.on{color:var(--red)}
+.mid{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:clamp(36px,13vw,170px)}
+.mid button{pointer-events:auto;display:grid;place-items:center;border-radius:50%;transition:transform .15s}
+.mid button:hover{transform:scale(1.08)}.mid button:active{transform:scale(.92)}
+.rb svg{width:clamp(48px,7vw,72px);height:clamp(48px,7vw,72px)}
+.pb svg{width:clamp(56px,9vw,92px);height:clamp(56px,9vw,92px)}
+.bw{position:absolute;left:14px;top:50%;transform:translateY(-50%);height:min(44%,220px);width:44px;display:flex;flex-direction:column;align-items:center;gap:12px;touch-action:none;cursor:pointer}
+.bw svg{width:26px;height:26px;flex:none}
+.bw.vw{left:auto;right:14px}
+.bw button{display:grid;place-items:center;width:44px;height:26px;flex:none}
+.bt{flex:1;width:6px;border-radius:3px;background:#ffffff40;position:relative;overflow:hidden}
+.bt i{position:absolute;left:0;right:0;bottom:0;height:100%;background:#fff}
+.bot{position:absolute;inset:auto 0 0 0;padding:60px 22px 14px;background:linear-gradient(transparent,#000c)}
+.seekrow{display:flex;align-items:center;gap:16px}
+input[type=range]{-webkit-appearance:none;appearance:none;margin:0;cursor:pointer;background:transparent;height:24px}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--bg-track,transparent)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--bg-track,transparent)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--red);margin-top:-9px;box-shadow:0 0 0 0 #e5091440;transition:box-shadow .15s}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:var(--red)}
+input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 8px #e5091440}
+#seek{flex:1;--bg-track:linear-gradient(to right,var(--red) var(--p,0%),#ffffff80 var(--p,0%) var(--b,0%),#ffffff40 var(--b,0%))}
+#tm{min-width:62px;text-align:right;font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+.acts{position:relative;display:flex;justify-content:center;flex-wrap:wrap;gap:6px 30px;margin-top:6px;padding:0 52px}
+#fs{position:absolute;right:-8px;top:0}
+.ab{display:flex;align-items:center;gap:8px;padding:8px 6px;font-size:15px;font-weight:700;border-radius:8px;transition:background .15s}
+.ab:hover{background:#ffffff1f}
+.ab svg{width:26px;height:26px}
+.fb{position:absolute;top:50%;width:120px;height:120px;margin-top:-60px;border-radius:50%;background:#ffffff26;display:grid;place-items:center;font-weight:700;font-size:20px;opacity:0;pointer-events:none}
+.fb.l{left:8%}.fb.r{right:8%}
+.fb.go{animation:fb .55s ease-out}
+@keyframes fb{0%{opacity:0;transform:scale(.7)}25%{opacity:1}100%{opacity:0;transform:scale(1.05)}}
+#spin{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px;border:4px solid #fff3;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite;pointer-events:none;opacity:0;transition:opacity .2s}
+.wait #spin{opacity:1}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#spin{animation-duration:2.4s}.fb.go{animation-duration:.01s}}
+#unlock{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:30px;background:#000b;border:1px solid #fff5;font-weight:700;backdrop-filter:blur(8px)}
+#unlock svg{width:22px;height:22px}
+.locked .ui{display:none}
+#toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);background:#000c;padding:10px 18px;border-radius:24px;font-size:14px;pointer-events:none}
+#err{position:absolute;inset:0;display:grid;place-content:center;gap:16px;text-align:center;padding:24px;background:#000e;font-size:17px;line-height:1.4}
+.modal{position:absolute;inset:0;display:grid;place-items:center;background:#0008;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:5}
+.card{position:relative;background:#181818f2;border:1px solid #ffffff1f;border-radius:16px;padding:22px 26px;max-width:92%;max-height:84%;overflow:auto;display:flex;gap:36px}
+.sec{min-width:150px}
+.sec h4{margin:0 0 8px;font-size:18px;font-weight:700}
+.it{display:block;width:100%;text-align:left;padding:9px 14px 9px 34px;font-size:16px;color:var(--mu);position:relative;border-radius:8px}
+.it:hover{background:#ffffff14;color:#fff}
+.it.on{color:#fff;font-weight:700}
+.it.on::before{content:"✓";position:absolute;left:10px;color:var(--red)}
+.cx{position:absolute;right:8px;top:8px}
+.card.has-x{padding-right:56px}
+.share{max-width:1280px;margin:0 auto;padding:28px 4vw 60px;display:grid;gap:18px}
+.share h2{font-size:20px;margin:0}
+.share p{color:var(--mu);margin:0;font-size:14px;line-height:1.5}
+.copy{display:grid;grid-template-columns:1fr auto;gap:8px}
+.copy textarea{width:100%;resize:vertical;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;color:#fff;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace;min-height:48px}
+
+.sset{min-width:min(420px,72vw);display:grid;gap:12px;align-content:start}
+.srow{display:grid;gap:6px}
+.sh{display:flex;justify-content:space-between;font-size:15px;color:var(--mu)}
+.sv{color:#fff;font-variant-numeric:tabular-nums}
+.sb{display:flex;gap:6px;flex-wrap:wrap}
+.sb .ghost{flex:1;padding:8px 6px}
+.shint{margin:0;font-size:13px;color:var(--mu);line-height:1.4}
+.modal.clear{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;place-items:start center;pointer-events:none}
+.modal.clear .card{pointer-events:auto;margin-top:8px;background:#181818e0;max-height:calc(100% - 16px)}
+#subtxt{position:absolute;left:50%;top:88%;transform:translate(-50%,-100%);width:max-content;max-width:86%;text-align:center;color:#fff;font:500 20px/1.3 "Helvetica Neue",Arial,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000,1px 1px 4px #000;pointer-events:none;z-index:2}
+#subtxt.edit{pointer-events:auto;cursor:grab;outline:1px dashed #fff9;outline-offset:4px;touch-action:none;z-index:6}
+
+/* ===== lot : plusieurs liens ===== */
+.box{background:rgba(0,0,0,.7);border:1px solid var(--line);border-radius:12px;padding:24px;display:grid;gap:16px;margin-top:24px}
+.box h2{margin:0;font-size:20px}
+.box p{margin:0;color:var(--mu);font-size:14px;line-height:1.5}
+textarea.big{width:100%;min-height:160px;resize:vertical;padding:14px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}
+textarea.big:focus{border-color:#fff;outline:0}
+select{padding:12px;background:#333;color:#fff;border:0;border-radius:8px;font:inherit;font-size:15px;max-width:100%}
+a.ghost{text-decoration:none;display:inline-block}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.res{display:grid;gap:8px}
+.ri{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.ri>div:first-child{min-width:0}
+.ri b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ri span{display:block;color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.cnt{color:var(--mu);font-size:14px}
+/* ===== mode embed : le lecteur remplit tout l'iframe ===== */
+body.embed{background:#000;overflow:hidden}
+body.embed header,body.embed .share,body.embed #close{display:none}
+body.embed .stage{max-width:none;padding:0}
+body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:auto;border-radius:0}
+
+@media(max-width:640px){
+  .sub{grid-template-columns:1fr auto}.sub input:nth-child(2){grid-column:1/-1;order:3}
+  .copy{grid-template-columns:1fr}
+  .ri{grid-template-columns:1fr}
+  .top{padding:12px 12px 30px}.bot{padding:40px 14px 8px}
+  .ab{font-size:13px;gap:6px}.acts{gap:2px 12px;padding:0 44px}#fs{right:-10px}.ab svg{width:22px;height:22px}
+  .bw{left:6px}.bw.vw{left:auto;right:6px}.ib{width:42px;height:42px}
+  .card{flex-direction:column;gap:16px}
+  #pipb{display:none}
+}
+</style>
+</head>
+<body>
+
+<section id="gate" hidden>
+  <header><a class="logo" href="?">FLUX</a></header>
+  <div class="wrap">
+    <h1>Accès privé</h1>
+    <p class="lead">Entre le mot de passe pour accéder au générateur.</p>
+    <form id="gf">
+      <label>Mot de passe
+        <input type="password" id="gpw" autocomplete="current-password" required>
+      </label>
+      <div class="msg" id="gmsg" role="alert"></div>
+      <button class="btn" type="submit">Entrer</button>
+    </form>
+  </div>
+</section>
+
+<section id="home" hidden>
+  <header><a class="logo" href="?">FLUX</a></header>
+  <div class="wrap">
+    <h1>Colle un lien .m3u8, la lecture démarre ici.</h1>
+    <p class="lead">Lecteur HLS avec sous-titres, Chromecast et code embed qui garde la lecture dans ce lecteur.</p>
+    <form id="f">
+      <label>Lien du flux (.m3u8)
+        <input type="url" id="src" placeholder="https://exemple.com/video/master.m3u8" required autocomplete="off">
+      </label>
+      <label>Titre (facultatif)
+        <input type="text" id="ttlIn" placeholder="Auto : détecté depuis le lien">
+      </label>
+      <div>
+        <div style="font-size:14px;color:var(--mu);margin-bottom:6px">Sous-titres externes (.vtt ou .srt, facultatif)</div>
+        <div id="subs" style="display:grid;gap:8px"></div>
+        <button type="button" class="link" id="addSub" style="margin-top:10px">Ajouter un sous-titre</button>
+      </div>
+      <div class="msg" id="msg" role="alert"></div>
+      <button class="btn" type="submit">Lancer la lecture</button>
+    </form>
+
+    <div class="box" id="batchBox">
+      <h2>Plusieurs liens d'un coup</h2>
+      <p>Colle un lien par ligne, avec le nom si tu veux : <b>Nom | lien</b> ou <b>lien | Nom</b>. Tu peux aussi mettre le nom sur une ligne et le lien sur la suivante. Chaque lien généré pointe vers ce lecteur.</p>
+      <textarea class="big" id="batchIn" spellcheck="false" placeholder="Film 1 | https://exemple.com/a/master.m3u8&#10;Film 2 | https://exemple.com/b/master.m3u8&#10;Épisode 3&#10;https://exemple.com/c/index.m3u8"></textarea>
+      <div class="row2">
+        <button type="button" class="ghost" id="batchFileBtn">Importer un fichier .txt / .csv</button>
+        <input type="file" id="batchFile" accept=".txt,.csv,.m3u,.list,text/plain" multiple hidden>
+        <select id="bkind" aria-label="Type de lien">
+          <option value="lnk">Lien direct (lecteur)</option>
+          <option value="embu">Lien embed (URL seule)</option>
+          <option value="emb">Code iframe responsive</option>
+        </select>
+      </div>
+      <div class="msg" id="batchMsg" role="alert"></div>
+      <button type="button" class="btn" id="batchGo">Générer les liens</button>
+      <div id="batchOut" hidden>
+        <div class="row2" style="margin-bottom:12px">
+          <button type="button" class="btn" id="copyAll" style="padding:11px 16px;font-size:15px">Copier tous les liens</button>
+          <button type="button" class="ghost" id="copyAllN">Copier noms + liens</button>
+          <span class="cnt" id="batchCnt"></span>
+        </div>
+        <div class="res" id="batchRes"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="watch" hidden>
+  <header><a class="logo" href="?">FLUX</a></header>
+  <div class="stage">
+    <div class="player idle" id="player">
+      <video id="v" playsinline></video>
+      <div id="hit"></div>
+      <div class="fb l" id="fbl"></div><div class="fb r" id="fbr"></div>
+      <div id="spin"></div>
+      <div id="subtxt" hidden></div>
+
+      <div class="ui">
+        <div class="top">
+          <span class="mark" aria-hidden="true">M</span><span id="ttl"></span>
+          <button class="ib" id="cast" hidden aria-label="Diffuser sur un appareil" data-i="cast"></button>
+          <button class="ib" id="pipb" aria-label="Picture-in-picture" data-i="pip"></button>
+          <button class="ib" id="close" aria-label="Fermer" data-i="x"></button>
+        </div>
+
+        <div class="bw" id="bw" aria-label="Luminosité"><span data-i="sun"></span><div class="bt"><i id="bf"></i></div></div>
+
+        <div class="bw vw" id="vw" aria-label="Volume"><button id="mute" aria-label="Couper le son"></button><div class="bt"><i id="vf"></i></div></div>
+
+        <div class="mid">
+          <button class="rb" id="bk" aria-label="Reculer de 10 secondes" data-i="bk"></button>
+          <button class="pb" id="pp" aria-label="Lecture / pause"></button>
+          <button class="rb" id="fw" aria-label="Avancer de 10 secondes" data-i="fw"></button>
+        </div>
+
+        <div class="bot">
+          <div class="seekrow">
+            <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position">
+            <span id="tm">0:00</span>
+          </div>
+          <div class="acts">
+            <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
+            <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
+            <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
+            <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
+            <button class="ib" id="fs" aria-label="Plein écran" data-i="fs"></button>
+          </div>
+        </div>
+      </div>
+
+      <button id="unlock" hidden><span data-i="lock"></span>Déverrouiller</button>
+      <div id="toast" hidden></div>
+      <div id="modal" class="modal" hidden><div class="card has-x" id="card"></div></div>
+      <div id="err" hidden><div id="errT"></div><div><button class="btn" id="retry">Réessayer</button></div></div>
+    </div>
+  </div>
+  <div class="share">
+    <h2>Partager</h2>
+    <p>Ces liens pointent vers ce lecteur, jamais vers le .m3u8 brut : la vidéo reste lue ici.</p>
+    <label>Lien direct
+      <div class="copy"><textarea id="lnk" rows="2" readonly></textarea><button class="ghost" data-copy="lnk">Copier</button></div>
+    </label>
+    <label>Lien embed (URL seule, avec embed=1)
+      <div class="copy"><textarea id="embu" rows="3" readonly></textarea><button class="ghost" data-copy="embu">Copier</button></div>
+    </label>
+    <label>Embed responsive (recommandé, s'adapte à la largeur)
+      <div class="copy"><textarea id="emb" rows="4" readonly></textarea><button class="ghost" data-copy="emb">Copier</button></div>
+    </label>
+    <label>Embed taille fixe
+      <div class="copy"><textarea id="emb2" rows="3" readonly></textarea><button class="ghost" data-copy="emb2">Copier</button></div>
+    </label>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const S='fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const svg=d=>`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${d}</svg>`;
+const ARC='<path d="M12 5V1l5 5-5 5V7c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6h2c0 4.4-3.6 8-8 8s-8-3.6-8-8 3.6-8 8-8z"/>';
+const IC={
+play:'<path d="M7 4v16l13-8z"/>',
+pause:'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>',
+vol:'<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>',
+mute:'<path d="M3 9v6h4l5 5V4L7 9H3zm13 .6l1.4-1.4 2.4 2.4 2.4-2.4 1.4 1.4-2.4 2.4 2.4 2.4-1.4 1.4-2.4-2.4-2.4 2.4-1.4-1.4 2.4-2.4z"/>',
+fw:ARC+'<text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="middle">10</text>',
+bk:'<g transform="translate(24 0) scale(-1 1)">'+ARC+'</g><text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="middle">10</text>',
+cc:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>',
+set:'<path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>',
+pip:'<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
+fs:'<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>',
+x:`<path d="M6 6l12 12M18 6L6 18" ${S}/>`,
+cast:'<path d="M3 18v3h3a3 3 0 0 0-3-3zm0-4v2a7 7 0 0 1 7 7h2a9 9 0 0 0-9-9zm0-4v2a11 11 0 0 1 11 11h2A13 13 0 0 0 3 10zm18-5H5a2 2 0 0 0-2 2v3h2V7h16v10h-6v2h6a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/>',
+sun:`<circle cx="12" cy="12" r="4.2" ${S}/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" ${S}/>`,
+speed:`<path d="M4 17a9 9 0 1 1 16 0" ${S}/><path d="M12 15l4-5" ${S}/><circle cx="12" cy="15" r="1.5"/>`,
+lock:`<rect x="5" y="11" width="14" height="10" rx="2" ${S}/><path d="M8 11V8a4 4 0 0 1 8 0v3" ${S}/>`,
+unlock:`<rect x="5" y="11" width="14" height="10" rx="2" ${S}/><path d="M8 11V8a4 4 0 0 1 7.6-1.7" ${S}/>`};
+const paint=r=>r.querySelectorAll('[data-i]').forEach(b=>b.innerHTML=svg(IC[b.dataset.i]));
+paint(document);
+
+const v=$('#v'),pl=$('#player');
+const base=location.href.split(/[?#]/)[0];
+let switching=false,hls=null,cur=null,ext=[],curSub=null,drag=false,idleT,locked=false,toastT,unlockT;
+
+/* ---------- langues : raccourcis (FR, EN, fr frc…) ---------- */
+const LANGS=[
+['fr','Français','fra','fre','french','vf','vff','vfq'],['en','Anglais','eng','english'],['es','Espagnol','spa','spanish'],
+['ar','Arabe','ara','arabic'],['de','Allemand','ger','deu','german'],['it','Italien','ita','italian'],['pt','Portugais','por','portuguese'],
+['nl','Néerlandais','nld','dut','dutch'],['ru','Russe','rus','russian'],['ja','Japonais','jpn','jp','japanese'],['ko','Coréen','kor','korean'],
+['zh','Chinois','chi','zho','chinese','cn'],['tr','Turc','tur','turkish'],['pl','Polonais','pol','polish'],['sv','Suédois','swe','swedish'],
+['da','Danois','dan','danish'],['fi','Finnois','fin','finnish'],['el','Grec','gre','ell','greek'],['he','Hébreu','heb','hebrew'],
+['hi','Hindi','hin'],['th','Thaï','tha','thai'],['vi','Vietnamien','vie','vietnamese'],['id','Indonésien','ind','indonesian'],
+['cs','Tchèque','cze','ces','czech'],['hu','Hongrois','hun','hungarian'],['ro','Roumain','rum','ron','romanian'],
+['uk','Ukrainien','ukr','ukrainian'],['fa','Persan','per','fas','persian'],['ca','Catalan','cat'],['no','Norvégien','nor','nob','norwegian']];
+const MODS={frc:'forcé',forced:'forcé',force:'forcé',forcee:'forcé',forces:'forcé',sdh:'(SDH)',cc:'(SDH)'};
+const plain=x=>String(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const LA={},LN={};
+LANGS.forEach(([c,n,...al])=>{LN[c]=n;[c,n,...al].forEach(a=>{LA[plain(a)]=c})});
+function parseLang(x){
+  const t=String(x).trim().split(/\s+/),c=LA[plain(t[0])];
+  if(!c)return null;
+  const mods=[],rest=[];
+  t.slice(1).forEach(w=>{const m=MODS[plain(w)];if(m){if(!mods.includes(m))mods.push(m)}else rest.push(w)});
+  return{c,mods,rest};
+}
+const nl=x=>{const p=parseLang(x);return p?[LN[p.c],...p.mods,...p.rest].join(' '):x};
+const shortLab=x=>{const p=parseLang(x);return p?[p.c,...p.mods.map(m=>m==='forcé'?'frc':'sdh'),...p.rest].join(' '):x};
+
+/* ---------- titre deviné depuis le lien ---------- */
+const hasScheme=u=>/^[a-z][a-z0-9+.-]*:\/\//i.test(u);
+const full=u=>hasScheme(u)?u:'https://'+u;
+const JUNK=/^(?:\d{3,4}p|4k|uhd|hd|sd|bluray|blu-ray|bdrip|brrip|web-?dl|web-?rip|webrip|hdtv|dvdrip|remux|hdrip|x26[45]|h26[45]|hevc|avc|av1|multi|vff|vfq|vfi|vf2?|vostfr|vo|truefrench|french|subfrench|dts|truehd|atmos|aac|ac3|eac3|ddp\d?|dd\d|flac|hdr10?\+?|hdr|dv|hlg|10bit|8bit|4klight|hdlight|proper|repack|extended|unrated|imax|remastered|internal)$/i;
+const isJunk=w=>JUNK.test(w)||JUNK.test(w.split('-')[0]);
+function cleanName(x){
+  x=x.replace(/[\[{][^\]}]*[\]}]/g,' ').replace(/[._+]+/g,' ').replace(/\s+/g,' ').trim();
+  const trim=t=>t.replace(/^[\s:\-–]+|[\s:\-–(]+$/g,'');
+  const cap=t=>/[A-ZÀ-Þ]/.test(t)?t:t.replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toUpperCase());
+  const ep=x.match(/\bS(\d{1,2}) ?E(\d{1,3})\b/i)||x.match(/\b(\d{1,2})x(\d{2,3})\b/i);
+  if(ep){
+    const code='S'+ep[1].padStart(2,'0')+'E'+ep[2].padStart(2,'0'),name=trim(x.slice(0,ep.index));
+    return name?cap(name)+' : '+code:code;
+  }
+  const w=x.split(' '),j=w.findIndex((t,i)=>i>0&&isJunk(t));
+  const region=(j<0?w:w.slice(0,j)).join(' ');
+  let year='',title=region,m,re=/\(?\b((?:19|20)\d\d)\b\)?/g;
+  while((m=re.exec(region))){if(m.index>0){year=m[1];title=region.slice(0,m.index)}}
+  title=trim(title);
+  return title?cap(title)+(year?' ('+year+')':''):'';
+}
+function guessTitle(src){
+  let u;try{u=new URL(full(src))}catch(e){return''}
+  const segs=[];
+  ['title','name','filename','file'].forEach(k=>{const q=u.searchParams.get(k);if(q)segs.push(q)});
+  u.pathname.split('/').reverse().forEach(x=>segs.push(x));
+  const GEN=/^(master|index\d*|playlist\d*|main|manifest|stream|video|hls[\w-]*|chunklist\d*|list|file|media|m3u8|v\d*|\d+|\d{3,4}p|[0-9a-f]{16,}|.{1,2})$/i;
+  for(const raw of segs){
+    let x;try{x=decodeURIComponent(raw)}catch(e){x=raw}
+    x=x.replace(/\.(m3u8|mpd|mp4|mkv|avi|ts|m4v|webm)$/i,'');
+    if(!x||GEN.test(x))continue;
+    if(!/[ ._+\-]/.test(x)&&!/^[A-Za-z]{4,}$/.test(x))continue;
+    const t=cleanName(x);if(t)return t;
+  }
+  return'';
+}
+
+/* ---------- accueil ---------- */
+function addRow(l='',u=''){
+  const r=el('div','sub');
+  const a=el('input');a.type='text';a.placeholder='FR, EN, ES… (fr frc = forcé)';a.value=l;a.setAttribute('aria-label','Nom de la langue');
+  a.oninput=()=>{if(/\s$/.test(a.value)){const n=nl(a.value.trim());if(n!==a.value.trim())a.value=n+' '}};
+  a.onchange=()=>{a.value=nl(a.value.trim())};
+  const b=el('input');b.type='url';b.placeholder='https://exemple.com/fr.vtt';b.value=u;b.setAttribute('aria-label','Lien du sous-titre');
+  const x=el('button','ghost','Retirer');x.type='button';x.onclick=()=>r.remove();
+  r.append(a,b,x);$('#subs').append(r);
+}
+addRow();
+$('#addSub').onclick=()=>addRow();
+$('#f').onsubmit=e=>{
+  e.preventDefault();
+  let src=$('#src').value.trim();
+  src=full(src);
+  if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
+  const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
+  history.pushState(null,'',mk(src,$('#ttlIn').value.trim()||guessTitle(src),subs,false));
+  route();
+};
+const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
+const noHttps=u=>u.replace(/^https:\/\//i,'');
+function mk(src,title,subs,embed){
+  const p=['s='+encQ(noHttps(src))];
+  if(title&&title!==guessTitle(src))p.push('t='+encQ(title));
+  subs.forEach(x=>p.push('c='+encQ(shortLab(x.label)+'|'+noHttps(x.url))));
+  if(embed)p.push('e=1');
+  return base+'?'+p.join('&');
+}
+$('#ttlIn').addEventListener('input',e=>{e.target.dataset.e=e.target.value?'1':''});
+$('#src').addEventListener('input',()=>{const t=$('#ttlIn');if(!t.dataset.e)t.value=guessTitle($('#src').value.trim())});
+
+
+/* ---------- lot : plusieurs liens d'un coup ---------- */
+const URLRE=/(?:https?:\/\/)?[^\s|;]*\.m3u8[^\s|;]*|https?:\/\/[^\s|;]+/i;
+const stripSep=s=>s.replace(/^[\s|;,:–—-]+|[\s|;,:–—-]+$/g,'');
+let batch=[];
+function parseBatch(txt){
+  const out=[];let pend='';
+  txt.replace(/\r/g,'').split('\n').forEach(line=>{
+    line=line.trim();if(!line)return;
+    const m=line.match(URLRE);
+    if(!m){pend=stripSep(line);return}
+    const name=stripSep(line.replace(m[0],' '))||pend;pend='';
+    out.push({src:full(m[0]),title:name});
+  });
+  return out;
+}
+function batchLink(b){
+  const t=b.title||guessTitle(b.src),k=$('#bkind').value;
+  if(k==='lnk')return mk(b.src,t,[],false);
+  const u=mk(b.src,t,[],true);
+  if(k==='embu')return u;
+  return '<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+}
+async function copyText(t,btn){
+  try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();document.execCommand('copy');a.remove()}
+  if(btn){const o=btn.textContent;btn.textContent='Copié';setTimeout(()=>btn.textContent=o,1500)}
+}
+function renderBatch(){
+  const box=$('#batchRes');box.innerHTML='';
+  batch.forEach(b=>{
+    const l=batchLink(b),r=el('div','ri'),d=el('div'),a=el('div','row2');
+    d.append(el('b','',b.title||guessTitle(b.src)||'Sans titre'),el('span','',l));
+    const c=el('button','ghost','Copier');c.type='button';c.onclick=()=>copyText(l,c);
+    a.append(c);
+    if($('#bkind').value!=='emb'){const o=el('a','ghost','Ouvrir');o.href=l;o.target='_blank';o.rel='noopener';a.append(o)}
+    r.append(d,a);box.append(r);
+  });
+  $('#batchCnt').textContent=batch.length+(batch.length>1?' liens':' lien');
+  $('#batchOut').hidden=!batch.length;
+}
+$('#batchGo').onclick=()=>{
+  batch=parseBatch($('#batchIn').value);
+  $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
+  renderBatch();
+};
+$('#bkind').onchange=()=>{if(batch.length)renderBatch()};
+$('#copyAll').onclick=e=>copyText(batch.map(batchLink).join('\n'),e.currentTarget);
+$('#copyAllN').onclick=e=>copyText(batch.map(b=>(b.title||guessTitle(b.src)||'Sans titre')+' : '+batchLink(b)).join('\n'),e.currentTarget);
+$('#batchFileBtn').onclick=()=>$('#batchFile').click();
+$('#batchFile').onchange=async e=>{
+  const ta=$('#batchIn');
+  for(const f of e.target.files){const t=await f.text();ta.value+=(ta.value&&!/\n$/.test(ta.value)?'\n':'')+t.trim()+'\n'}
+  e.target.value='';$('#batchGo').click();
+};
+
+/* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
+const PASS_HASH='000937cc5efa748969146f517bcbc5af4ae8b9f87ca5f2db209d159f5b17a294';
+const AK='flux-auth';
+const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const authed=()=>{try{return localStorage.getItem(AK)===PASS_HASH}catch(e){return false}};
+$('#gf').onsubmit=async e=>{
+  e.preventDefault();
+  let h='';try{h=await sha($('#gpw').value)}catch(err){$('#gmsg').textContent='Ce navigateur ne peut pas vérifier le mot de passe (HTTPS requis).';return}
+  if(h===PASS_HASH){try{localStorage.setItem(AK,h)}catch(err){}$('#gpw').value='';$('#gmsg').textContent='';route()}
+  else $('#gmsg').textContent='Mot de passe incorrect.';
+};
+
+/* ---------- routage ---------- */
+function route(){
+  const q=new URLSearchParams(location.search),raw=q.get('s')||q.get('src'),src=raw?full(raw):'';
+  const open=(q.get('e')||q.get('embed'))==='1'&&!!src;
+  document.body.classList.toggle('embed',open);
+  destroy();
+  if(!open&&!authed()){$('#home').hidden=true;$('#watch').hidden=true;$('#gate').hidden=false;document.title='Accès privé';return}
+  $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
+  if(!src){document.title='Flux – Lecteur HLS';return}
+  const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
+  start(src,q.get('t')||q.get('title')||guessTitle(src),subs);
+}
+window.addEventListener('popstate',route);
+
+/* ---------- lecture ---------- */
+function destroy(){
+  if(hls){hls.destroy();hls=null}
+  v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
+  ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);
+}
+function start(src,title,subs){
+  cur={src,title,subs};
+  $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
+  const u=mk(src,title,subs,true);
+  $('#lnk').value=mk(src,title,subs,false);
+  $('#embu').value=u;
+  $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+  $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+  v.crossOrigin='anonymous';
+  subs.forEach((s,i)=>addExt(s,i===0));
+  if(window.Hls&&Hls.isSupported())initHls(0,-1,true);
+  else if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=src;v.play().catch(()=>{});
+  }else fail("Ce navigateur ne sait pas lire le HLS.");
+  wake();
+}
+function initHls(pos,aud,play){
+  if(hls){hls.destroy();hls=null}
+  hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1});
+  hls.loadSource(cur.src);hls.attachMedia(v);
+  if(aud>=0)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{hls.audioTrack=aud});
+  hls.once(Hls.Events.SUBTITLE_TRACKS_UPDATED,()=>{if(curSub&&curSub.i!==undefined){hls.subtitleTrack=curSub.i;hls.subtitleDisplay=false}});
+  hls.on(Hls.Events.MANIFEST_PARSED,()=>{$('#qb').hidden=hls.levels.length<2;if(play)v.play().catch(()=>{})});
+  hls.on(Hls.Events.LEVEL_SWITCHED,qLabel);
+  let lastRec=0;
+  hls.on(Hls.Events.ERROR,(_,d)=>{
+    console.warn('HLS',d.type,d.details,d);
+    if(!d.fatal){if(switching)toast('Erreur audio : '+d.details);return}
+    if(d.type===Hls.ErrorTypes.MEDIA_ERROR){const n=Date.now();if(n-lastRec<3000)hls.swapAudioCodec();lastRec=n;hls.recoverMediaError();return}
+    fail('Impossible de lire ce flux. Vérifie le lien .m3u8 et que le serveur autorise le CORS (Access-Control-Allow-Origin).');
+  });
+}
+/* changer de langue = relancer le flux à la même position avec la piste choisie
+   (évite l'erreur de buffer quand les pistes n'ont pas le même codec) */
+function setAudio(i){
+  if(!hls||hls.audioTrack===i)return;
+  const t=v.currentTime,was=!v.paused;
+  switching=true;pl.classList.add('wait');toast('Changement de langue…');
+  initHls(t,i,was);
+  setTimeout(()=>{switching=false},10000);
+}
+function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
+$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs)}};
+
+/* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
+   donc on garde les sous-titres externes en mémoire à part */
+function parseCues(txt){
+  const T=/(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{1,3})/g,out=[];
+  const sec=m=>(+(m[1]||0))*3600+(+m[2])*60+(+m[3])+(+m[4].padEnd(3,'0'))/1000;
+  txt.replace(/^\uFEFF/,'').replace(/\r/g,'').split(/\n{2,}/).forEach(b=>{
+    const L=b.split('\n'),k=L.findIndex(l=>l.includes('-->'));
+    if(k<0)return;
+    const t=[...L[k].matchAll(T)];if(t.length<2)return;
+    const text=L.slice(k+1).join('\n').trim();
+    if(text)out.push({startTime:sec(t[0]),endTime:sec(t[1]),text});
+  });
+  return out;
+}
+async function addExt(s,def){
+  let url=s.url,cues=null;
+  try{
+    const txt=await(await fetch(url)).text();
+    cues=parseCues(txt);
+    if(/\.srt(\?|#|$)/i.test(url))url=URL.createObjectURL(new Blob(['WEBVTT\n\n'+txt.replace(/\r/g,'').replace(/(\d+:\d\d:\d\d),(\d{3})/g,'$1.$2')],{type:'text/vtt'}));
+  }catch(e){if(/\.srt(\?|#|$)/i.test(url))return}
+  const t=document.createElement('track');t.kind='subtitles';t.label=s.label;t.src=url;
+  v.appendChild(t);t.track.mode='disabled';
+  const it={name:s.label,track:t.track,ext:true,cues:cues&&cues.length?cues:null};ext.push(it);
+  if(def&&!curSub)setSub(it);
+}
+function subList(){
+  const L=[];
+  if(hls)hls.subtitleTracks.forEach((t,i)=>L.push({name:nl(t.name||t.lang||'Piste '+(i+1)),i}));
+  else[...v.textTracks].filter(t=>!ext.some(e=>e.track===t)&&/subtitles|captions/.test(t.kind)).forEach(t=>L.push({name:nl(t.label||t.language||'Sous-titres'),track:t}));
+  return L.concat(ext);
+}
+function setSub(it){
+  ext.forEach(e=>e.track.mode='disabled');
+  if(hls)hls.subtitleTrack=-1;else[...v.textTracks].forEach(t=>{if(!ext.some(e=>e.track===t))t.mode='disabled'});
+  if(it){
+    if(it.i!==undefined&&hls){hls.subtitleTrack=it.i;hls.subtitleDisplay=false}
+    else it.track.mode='hidden';
+  }
+  curSub=it;
+}
+const isOn=it=>curSub&&(curSub===it||(it.i!==undefined&&curSub.i===it.i)||(it.track&&curSub.track===it.track));
+
+/* ---------- rendu des sous-titres (délai, taille, position) ---------- */
+const sub=$('#subtxt'),SSK='lecteur-sub-settings',SSD={delay:0,size:100,x:50,y:88};
+let subEdit=false,panelSync=null,lastTxt=null,dragS=null;
+const sset=Object.assign({},SSD,(()=>{try{const o=JSON.parse(localStorage.getItem(SSK));return o?{size:o.size,x:o.x,y:o.y}:{}}catch(e){return{}}})());
+const saveSS=()=>{try{localStorage.setItem(SSK,JSON.stringify({size:sset.size,x:sset.x,y:sset.y}))}catch(e){}};
+const clamp=n=>Math.max(0,Math.min(100,n));
+function applySS(){
+  sub.style.left=sset.x+'%';sub.style.top=sset.y+'%';
+  sub.style.fontSize=Math.max(12,pl.clientHeight*0.045*sset.size/100)+'px';
+}
+const cleanCue=s=>String(s).replace(/<(?!\/?(?:i|b|u)>)[^>]*>/g,'').replace(/&/g,'&amp;').replace(/&amp;(amp|lt|gt|nbsp);/g,'&$1;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/&lt;(\/?(?:i|b|u))&gt;/g,'<$1>').replace(/\n/g,'<br>');
+function subTracks(){
+  if(!curSub)return[];
+  if(curSub.track)return[curSub.track];
+  return[...v.textTracks].filter(t=>!ext.some(e=>e.track===t)&&/subtitles|captions/.test(t.kind)&&t.mode!=='disabled');
+}
+function renderSub(){
+  const tm=v.currentTime-sset.delay;let html='',lists=[];
+  if(curSub&&curSub.cues)lists=[curSub.cues];
+  else subTracks().forEach(t=>{if(t.mode!=='hidden')t.mode='hidden';if(t.cues)lists.push(t.cues)});
+  lists.forEach(cs=>{for(let i=0;i<cs.length;i++){const c=cs[i];if(c.startTime<=tm&&tm<c.endTime)html+=(html?'<br>':'')+cleanCue(c.text)}});
+  if(!html&&subEdit)html='Exemple de sous-titre<br>sur deux lignes';
+  sub.classList.toggle('edit',subEdit);
+  if(html!==lastTxt){lastTxt=html;sub.innerHTML=html;sub.hidden=!html}
+}
+setInterval(renderSub,100);
+new ResizeObserver(applySS).observe(pl);applySS();
+sub.addEventListener('pointerdown',e=>{if(!subEdit)return;e.preventDefault();sub.setPointerCapture(e.pointerId);dragS={x:e.clientX,y:e.clientY,ox:sset.x,oy:sset.y}});
+sub.addEventListener('pointermove',e=>{
+  if(!dragS)return;const r=pl.getBoundingClientRect();
+  sset.x=Math.round(clamp(dragS.ox+(e.clientX-dragS.x)/r.width*100));
+  sset.y=Math.round(clamp(dragS.oy+(e.clientY-dragS.y)/r.height*100));
+  applySS();if(panelSync)panelSync();
+});
+['pointerup','pointercancel'].forEach(n=>sub.addEventListener(n,()=>{if(dragS){dragS=null;saveSS()}}));
+
+function subPanel(){
+  const c=$('#card'),m=$('#modal');c.innerHTML='';m.classList.add('clear');subEdit=true;
+  const d=el('div','sec sset'),syncs=[];d.append(el('h4','','Paramètres des sous-titres'));
+  const go=()=>{applySS();renderSub();syncs.forEach(f=>f());saveSS()};
+  const line=(name,body,val)=>{const r=el('div','srow'),h=el('div','sh');h.append(el('span','',name),val);r.append(h,body);d.append(r)};
+  const dv=el('b','sv'),db=el('div','sb');
+  [['−1 s',-1],['−0,1 s',-.1],['+0,1 s',.1],['+1 s',1]].forEach(([t,st])=>{
+    const b=el('button','ghost',t);b.onclick=()=>{sset.delay=Math.round((sset.delay+st)*10)/10;go()};db.append(b)});
+  line('Délai (+ = plus tard, − = plus tôt)',db,dv);
+  syncs.push(()=>{dv.textContent=(sset.delay>0?'+':'')+sset.delay.toFixed(1).replace('.',',')+' s'});
+  const sld=(name,key,min,max,step,f)=>{
+    const i=document.createElement('input'),val=el('b','sv');
+    i.type='range';i.min=min;i.max=max;i.step=step;i.style.cssText='width:100%;--bg-track:#ffffff40';
+    i.oninput=()=>{sset[key]=+i.value;go()};line(name,i,val);
+    syncs.push(()=>{i.value=sset[key];val.textContent=f(sset[key])})};
+  sld('Taille','size',50,250,5,n=>n+' %');
+  sld('Position horizontale','x',0,100,1,n=>n+' %');
+  sld('Position verticale','y',0,100,1,n=>n+' %');
+  d.append(el('p','shint','Vous pouvez aussi faire glisser le texte directement sur la vidéo.'));
+  const bb=el('div','sb'),rs=el('button','ghost','Réinitialiser'),bk=el('button','ghost','← Retour');
+  rs.onclick=()=>{Object.assign(sset,SSD);go()};bk.onclick=()=>openModal('cc');
+  bb.append(rs,bk);d.append(bb);c.append(d);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  panelSync=()=>syncs.forEach(f=>f());
+  m.hidden=false;go();
+}
+
+/* ---------- fenêtres (audio/sous-titres, vitesse, qualité) ---------- */
+const RATES=[0.5,0.75,1,1.25,1.5,2];
+const lvName=(x)=>x.height?x.height+'p':Math.round(x.bitrate/1000)+' kb/s';
+function secs(k){
+  if(k==='cc'){
+    const a=hls?hls.audioTracks:[];
+    return[
+      {t:'Audio',items:a.length>1?a.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,close:true,f:()=>setAudio(i)})):[]},
+      {t:'Sous-titres',items:[{l:'Désactivés',on:!curSub,f:()=>setSub(null)}].concat(subList().map(it=>({l:it.name,on:isOn(it),f:()=>setSub(it)})))},
+      {t:'Réglages',items:[{l:'Paramètres des sous-titres…',go:'sub'}]}
+    ];
+  }
+  if(k==='speed')return[{t:'Vitesse de lecture',items:RATES.map(r=>({l:r===1?'Normale':r+'×',on:v.playbackRate===r,f:()=>{v.playbackRate=r}}))}];
+  const lv=hls?hls.levels:[];
+  return[{t:'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())}];
+}
+function openModal(k){
+  $('#modal').classList.remove('clear');subEdit=false;panelSync=null;
+  if(k==='sub')return subPanel();
+  const c=$('#card');c.innerHTML='';
+  secs(k).forEach(s=>{
+    if(!s.items.length)return;
+    const d=el('div','sec');d.append(el('h4','',s.t));
+    s.items.forEach(it=>{
+      const b=el('button','it'+(it.on?' on':''),it.l);
+      b.onclick=()=>{if(it.go)return openModal(it.go);it.f();it.close?closeModal():openModal(k)};
+      d.append(b);
+    });
+    c.append(d);
+  });
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  $('#modal').hidden=false;
+}
+function closeModal(){$('#modal').hidden=true;$('#modal').classList.remove('clear');subEdit=false;panelSync=null;renderSub()}
+$('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
+$('#cc').onclick=()=>openModal('cc');
+$('#sp').onclick=()=>openModal('speed');
+$('#qb').onclick=()=>openModal('q');
+v.addEventListener('ratechange',()=>{$('#spl').textContent='Vitesse ('+v.playbackRate+'×)'});
+function qLabel(){if(hls)$('#ql').textContent='Qualité ('+(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{}))+')'}
+
+/* ---------- contrôles ---------- */
+const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
+const toggle=()=>v.paused?v.play().catch(()=>{}):v.pause();
+const seekBy=d=>{v.currentTime=Math.max(0,Math.min(v.duration||1e9,v.currentTime+d))};
+const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false),'_blank');
+function fs(){
+  if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return}
+  if(pl.requestFullscreen&&document.fullscreenEnabled)pl.requestFullscreen().catch(openTab);
+  else if(pl.webkitRequestFullscreen&&document.webkitFullscreenEnabled!==false)pl.webkitRequestFullscreen();
+  else if(v.webkitEnterFullscreen)v.webkitEnterFullscreen();
+  else openTab(); /* iframe sans allowfullscreen : on ouvre le lecteur dans un onglet */
+}
+function pip(){if(document.pictureInPictureElement)document.exitPictureInPicture();else if(v.requestPictureInPicture)v.requestPictureInPicture().catch(()=>{})}
+$('#pp').onclick=toggle;
+$('#bk').onclick=()=>seekBy(-10);$('#fw').onclick=()=>seekBy(10);
+$('#fs').onclick=fs;$('#pipb').onclick=pip;
+$('#close').onclick=()=>{history.pushState(null,'',base);route()};
+$('#mute').onclick=()=>{v.muted=!v.muted};
+const seek=$('#seek');
+seek.oninput=()=>{drag=true;if(isFinite(v.duration))v.currentTime=seek.value/1000*v.duration;seek.style.setProperty('--p',seek.value/10+'%')};
+seek.onchange=()=>{drag=false};
+
+/* luminosité (assombrit la vidéo) */
+function vslider(box,fn){
+  const bt=box.querySelector('.bt');
+  const mv=e=>{const b=bt.getBoundingClientRect();fn(Math.max(0,Math.min(1,1-(e.clientY-b.top)/b.height)))};
+  box.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;box.setPointerCapture(e.pointerId);mv(e)});
+  box.addEventListener('pointermove',e=>{if(box.hasPointerCapture(e.pointerId))mv(e)});
+}
+vslider($('#bw'),r=>{$('#bf').style.height=r*100+'%';v.style.filter='brightness('+(0.25+0.75*r)+')'});
+vslider($('#vw'),r=>{v.volume=r;v.muted=r===0});
+
+/* verrouillage */
+function setLock(on){
+  locked=on;pl.classList.toggle('locked',on);
+  $('#unlock').hidden=true;if(on)closeModal();
+}
+$('#lk').onclick=()=>{setLock(true);toast('Écran verrouillé')};
+$('#unlock').onclick=()=>setLock(false);
+function showUnlock(){const u=$('#unlock');u.hidden=false;clearTimeout(unlockT);unlockT=setTimeout(()=>u.hidden=true,2500)}
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>e.hidden=true,2200)}
+
+/* tap / double tap : touch = afficher/masquer, souris = lecture/pause */
+let lastTap=0,tapT;
+function flash(side,t){const f=$(side==='l'?'#fbl':'#fbr');f.textContent=t;f.classList.remove('go');void f.offsetWidth;f.classList.add('go')}
+$('#hit').addEventListener('pointerup',e=>{
+  if(e.button>0)return;
+  if(locked){showUnlock();return}
+  const touch=e.pointerType==='touch',now=Date.now(),r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+  if(now-lastTap<300){
+    clearTimeout(tapT);lastTap=0;
+    if(!touch)toggle();
+    if(x<.33){seekBy(-10);flash('l','−10 s')}else if(x>.67){seekBy(10);flash('r','+10 s')}else fs();
+    return;
+  }
+  lastTap=now;
+  if(touch)tapT=setTimeout(()=>{pl.classList.contains('idle')?wake():pl.classList.add('idle')},280);
+  else toggle();
+});
+
+function sync(){
+  $('#pp').innerHTML=svg(v.paused?IC.play:IC.pause);
+  wake();
+}
+function vsync(){
+  $('#mute').innerHTML=svg(v.muted||v.volume===0?IC.mute:IC.vol);
+  $('#vf').style.height=(v.muted?0:v.volume)*100+'%';
+}
+function tsync(){
+  const d=v.duration,live=!isFinite(d);
+  if(!drag){const p=live?100:(d?v.currentTime/d*100:0);seek.value=p*10;seek.style.setProperty('--p',p+'%')}
+  $('#tm').textContent=live?'Direct':fmt(d-v.currentTime);
+  if(d&&!live&&v.buffered.length)seek.style.setProperty('--b',(v.buffered.end(v.buffered.length-1)/d*100)+'%');
+}
+v.addEventListener('play',sync);v.addEventListener('pause',sync);
+v.addEventListener('volumechange',vsync);
+['timeupdate','progress','durationchange','loadedmetadata'].forEach(n=>v.addEventListener(n,tsync));
+v.addEventListener('waiting',()=>pl.classList.add('wait'));
+['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
+v.addEventListener('loadstart',()=>pl.classList.add('wait'));
+v.addEventListener('error',()=>{if(!hls&&v.src)fail('Impossible de lire ce flux.')});
+sync();vsync();
+
+function wake(){
+  if(locked)return;
+  pl.classList.remove('idle');clearTimeout(idleT);
+  if(!v.paused)idleT=setTimeout(()=>{if($('#modal').hidden)pl.classList.add('idle')},3000);
+}
+pl.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')wake()},{passive:true}); /* pas sur tactile : sinon le faux mousemove du tap rouvre puis referme les contrôles */
+pl.addEventListener('pointerdown',e=>{if(e.target.closest('.ui'))wake()},{passive:true});
+
+document.addEventListener('keydown',e=>{
+  if($('#watch').hidden||(/INPUT|TEXTAREA/.test(e.target.tagName)&&e.target.type!=='range'))return;
+  const k=e.key.toLowerCase();let h=true;
+  if(k==='escape')closeModal();
+  else if(locked)h=false;
+  else if(k===' '||k==='k')toggle();
+  else if(k==='arrowleft')seekBy(-10);
+  else if(k==='arrowright')seekBy(10);
+  else if(k==='arrowup')v.volume=Math.min(1,v.volume+.1);
+  else if(k==='arrowdown')v.volume=Math.max(0,v.volume-.1);
+  else if(k==='m')v.muted=!v.muted;
+  else if(k==='f')fs();
+  else if(k==='c')setSub(curSub?null:(subList()[0]||null));
+  else h=false;
+  if(h){e.preventDefault();wake()}
+});
+
+/* ---------- Cast (Chromecast / AirPlay) ---------- */
+let castCtx=null;
+window.initCast=function(){
+  try{
+    castCtx=cast.framework.CastContext.getInstance();
+    castCtx.setOptions({receiverApplicationId:chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,autoJoinPolicy:chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED});
+    castCtx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED,e=>{$('#cast').classList.toggle('on',/STARTED|RESUMED/.test(e.sessionState))});
+    $('#cast').hidden=false;
+  }catch(e){}
+};
+if(window.cast&&window.cast.framework)initCast();
+v.addEventListener('webkitplaybacktargetavailabilitychanged',e=>{if(e.availability==='available')$('#cast').hidden=false});
+$('#cast').onclick=async()=>{
+  if(castCtx){
+    if(/STARTED|RESUMED/.test(castCtx.getSessionState())){castCtx.endCurrentSession(true);toast('Diffusion arrêtée');return}
+    const err=await castCtx.requestSession();
+    if(err)return;
+    const s=castCtx.getCurrentSession();if(!s||!cur)return;
+    const mi=new chrome.cast.media.MediaInfo(cur.src,'application/x-mpegURL');
+    mi.streamType=chrome.cast.media.StreamType.BUFFERED;
+    mi.metadata=new chrome.cast.media.GenericMediaMetadata();mi.metadata.title=cur.title||'Vidéo';
+    const vtt=cur.subs.map((x,i)=>({x,id:i+1})).filter(o=>!/\.srt(\?|#|$)/i.test(o.x.url));
+    mi.tracks=vtt.map(o=>{const t=new chrome.cast.media.Track(o.id,chrome.cast.media.TrackType.TEXT);t.trackContentId=o.x.url;t.trackContentType='text/vtt';t.subtype=chrome.cast.media.TextTrackType.SUBTITLES;t.name=o.x.label;t.language='und';return t});
+    const rq=new chrome.cast.media.LoadRequest(mi);
+    rq.currentTime=v.currentTime||0;rq.autoplay=true;
+    const a=vtt.find(o=>curSub&&curSub.ext&&o.x.label===curSub.name);
+    rq.activeTrackIds=a?[a.id]:[];
+    await s.loadMedia(rq);v.pause();toast('Diffusion en cours sur la TV');
+  }else if(v.webkitShowPlaybackTargetPicker)v.webkitShowPlaybackTargetPicker();
+};
+
+/* copier */
+document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
+  const t=$('#'+b.dataset.copy);
+  try{await navigator.clipboard.writeText(t.value)}catch(e){t.select();document.execCommand('copy')}
+  const o=b.textContent;b.textContent='Copié';setTimeout(()=>b.textContent=o,1500);
+});
+
+route();
+</script>
+</body>
+</html>
