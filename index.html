@@ -180,26 +180,9 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #nxno{padding:10px 12px;border-radius:6px;background:#6d6d6eb3;color:#fff;font-weight:700;font-size:14px}
 #nxno:hover{background:#6d6d6e73}
 
-/* ===== style unifié des boutons du lecteur : fond blanc, texte et icône noirs en gras, coins 8px ===== */
-.player .pbtn,.player .pbtn.sec,.player .ab,.player .ib,.player .rb,.player .pb,.player #mute,.player #nxno,.player #unlock,.player .ghost,.player #err .btn{background:#fff;color:#000;border:0;border-radius:8px;font-weight:700;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-.player .pbtn:hover,.player .pbtn.sec:hover,.player .ab:hover,.player .ib:hover,.player .rb:hover,.player .pb:hover,.player #mute:hover,.player #nxno:hover,.player #unlock:hover,.player .ghost:hover,.player #err .btn:hover{background:#ffffffbf;box-shadow:none}
-.player .ib.on{color:var(--red)}
-.player .pbtn{box-shadow:none}
-.player #nxgo{border-radius:8px}
-/* barre du haut, plein écran, fermer */
-.player .ib{width:44px;height:44px}
-.player .ib svg{width:24px;height:24px}
-/* contrôles centraux : carrés blancs arrondis */
-.player .rb,.player .pb{padding:clamp(10px,1.6vw,18px)}
-.player .rb svg{width:clamp(30px,4.5vw,44px);height:clamp(30px,4.5vw,44px)}
-.player .pb svg{width:clamp(36px,6vw,56px);height:clamp(36px,6vw,56px)}
-/* volume */
-.player #mute{width:40px;height:34px}
-/* actions du bas (vitesse, qualité, verrouiller, audio et sous-titres) */
-.player .acts{gap:10px 12px}
-.player .ab{padding:10px 16px;gap:10px}
-/* déverrouiller */
-.player #unlock{padding:12px 20px}
+/* style "Reprendre" pour : Passer l'intro, Passer le générique, Depuis le début */
+#skp,#sko,#rsb{background:#fff;color:#000;border-radius:8px;font-weight:700;box-shadow:none}
+#skp:hover,#sko:hover,#rsb:hover{background:#ffffffbf;box-shadow:none}
 
 /* ===== lot : plusieurs liens ===== */
 .box{background:rgba(0,0,0,.7);border:1px solid var(--line);border-radius:12px;padding:24px;display:grid;gap:16px;margin-top:24px}
