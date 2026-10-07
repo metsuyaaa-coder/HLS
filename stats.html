@@ -55,6 +55,13 @@ button:hover{background:rgba(109,109,110,.45)}
 .ch i.z{background:#333}
 .cl{display:flex;gap:5px;margin-top:6px}
 .cl span{flex:1;text-align:center;font-size:10px;color:var(--mu);min-width:0}
+.sl{margin-top:20px}
+.sl h3{margin-bottom:8px}
+.sr{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:8px 2px;border-top:1px solid var(--line);font-size:14px}
+.sr .w{color:var(--mu);font:12px ui-monospace,Menlo,monospace}
+.sr .d{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;min-width:78px}
+.sr .on{color:#46d369;font-size:12px;font-weight:600}
+.sbox{max-height:300px;overflow:auto}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
 @media(max-width:560px){.tot{grid-template-columns:1fr 1fr}.row{grid-template-columns:repeat(4,1fr);gap:8px}.row>div:first-child{grid-column:1/-1}}
@@ -75,12 +82,14 @@ button:hover{background:rgba(109,109,110,.45)}
     <div class="kp" id="pk"></div>
     <h3>14 derniers jours : minutes regardées par jour</h3>
     <div class="ch" id="pc"></div><div class="cl" id="pd"></div>
+    <div class="sl"><h3 id="pvh">Dernières vues</h3><div class="sbox" id="pv"></div></div>
   </div></div>
 </div>
 <script>
 const $=s=>document.querySelector(s);
 let data=[];
 const dur=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60);if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+' h'+(r?' '+String(r).padStart(2,'0')+' min':'')};
+const dur2=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60),r=s%60;if(m<60)return m+' min'+(r?' '+String(r).padStart(2,'0')+' s':'');return dur(s)};
 const ago=t=>{if(!t)return'';const s=(Date.now()-t)/1000;if(s<60)return"à l'instant";if(s<3600)return'il y a '+Math.floor(s/60)+' min';if(s<86400)return'il y a '+Math.floor(s/3600)+' h';return'il y a '+Math.floor(s/86400)+' j'};
 function show(){
   const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
@@ -121,13 +130,25 @@ function fillD(){
 }
 async function openD(src){
   openSrc=src;fillD();$('#ov').hidden=false;$('#px').focus();
-  $('#pc').innerHTML='';$('#pd').innerHTML='';
+  $('#pc').innerHTML='';$('#pd').innerHTML='';$('#pv').innerHTML='';
   try{
     const r=await fetch('/api/stats?src='+encodeURIComponent(src),{cache:'no-store'});const j=await r.json();
     if(!r.ok)throw 0;if(openSrc!==src)return;
     const mx=Math.max(1,...j.days.map(x=>x.secs));
     $('#pc').innerHTML=j.days.map(x=>'<div title="'+x.d+' : '+dur(x.secs)+' · '+x.views+' vue(s)"><i class="'+(x.secs?'':'z')+'" style="height:'+Math.max(2,Math.round(x.secs/mx*100))+'%"></i></div>').join('');
     $('#pd').innerHTML=j.days.map(x=>'<span>'+x.d.slice(8)+'</span>').join('');
+    const box=$('#pv'),S=j.sessions||[];
+    $('#pvh').textContent='Dernières vues ('+S.length+') : durée de chaque visionnage';
+    if(!S.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Pas encore de détail (seules les nouvelles vues sont enregistrées).';box.append(e)}
+    S.forEach(x=>{
+      const r=document.createElement('div'),a=document.createElement('div'),w=document.createElement('span'),d=document.createElement('div'),o=document.createElement('div');
+      r.className='sr';
+      a.textContent=new Date(x.start||x.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      w.className='w';w.textContent=x.who?' #'+x.who:'';a.append(w);
+      d.className='d';d.textContent=dur2(x.secs);
+      o.className='on';o.textContent=Date.now()-x.last<45000?'● en cours':'';
+      r.append(a,o,d);box.append(r);
+    });
   }catch(e){$('#pc').textContent='Détail indisponible.'}
 }
 function closeD(){openSrc=null;$('#ov').hidden=true}

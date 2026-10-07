@@ -67,7 +67,16 @@ async function live(request) {
   if (!/^https?:\/\//i.test(src) || !vid || vid.includes('|')) return new Response(null, { status: 400 });
   const member = vid + '|' + src;
   const sec = Math.max(0, Math.min(Math.round(+b.sec || 0), 600)); // secondes regardées depuis le dernier envoi
-  const extra = sec ? addSecs(src, sec) : [];
+  const sid = String(b.sid || '');
+  const TTL = 2592000; // 30 jours
+  const sess = sec && /^[\w-]{4,40}$/.test(sid) ? [
+    ['HINCRBY', 'sv:' + src, sid, sec],
+    ['HSETNX', 'ss:' + src, sid, Date.now() - sec * 1000],
+    ['HSETNX', 'sw:' + src, sid, vid.slice(0, 6)],
+    ['ZADD', 'sl:' + src, Date.now(), sid],
+    ['EXPIRE', 'sv:' + src, TTL], ['EXPIRE', 'ss:' + src, TTL], ['EXPIRE', 'sw:' + src, TTL], ['EXPIRE', 'sl:' + src, TTL],
+  ] : [];
+  const extra = sec ? [...addSecs(src, sec), ...sess] : [];
   try {
     if (b.leave) await redis([['ZREM', 'live', member], ['HSET', 'titles', src, title], ...extra]);
     else await redis([
@@ -88,8 +97,16 @@ async function stats(only) {
         days.push(d);
         cmds.push(['HGET', 'dsecs:' + d, only], ['HGET', 'dviews:' + d, only]);
       }
+      cmds.push(['ZREVRANGE', 'sl:' + only, 0, 99, 'WITHSCORES']);
       const r = await redis(cmds);
-      return json({ days: days.map((d, i) => ({ d, secs: +r[i * 2] || 0, views: +r[i * 2 + 1] || 0 })).reverse() });
+      const sl = r[r.length - 1] || [], ids = [], lasts = [];
+      for (let i = 0; i < sl.length; i += 2) { ids.push(sl[i]); lasts.push(+sl[i + 1]); }
+      let sessions = [];
+      if (ids.length) {
+        const [sv, ss, sw] = await redis([['HMGET', 'sv:' + only, ...ids], ['HMGET', 'ss:' + only, ...ids], ['HMGET', 'sw:' + only, ...ids]]);
+        sessions = ids.map((id, i) => ({ id, secs: +sv[i] || 0, start: +ss[i] || 0, last: lasts[i], who: sw[i] || '' }));
+      }
+      return json({ days: days.map((d, i) => ({ d, secs: +r[i * 2] || 0, views: +r[i * 2 + 1] || 0 })).reverse(), sessions });
     }
     const now = Date.now();
     const [, plays, titles, last, liveRaw, secs] = (await redis([

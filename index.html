@@ -647,7 +647,7 @@ v.addEventListener('pause',()=>clearTimeout(viewT));
 /* ---------- spectateurs en direct : heartbeat toutes les 15 s tant que la lecture tourne ---------- */
 let liveI=null;
 /* temps réellement regardé (secondes de vidéo lues, sans les sauts) : envoyé avec chaque heartbeat */
-let wSec=0,wLast=null;
+let wSec=0,wLast=null,sid='';
 const takeSec=()=>{const s=Math.floor(wSec);wSec-=s;return s};
 v.addEventListener('timeupdate',()=>{
   if(v.paused||v.seeking||v.ended){wLast=null;return}
@@ -656,7 +656,7 @@ v.addEventListener('timeupdate',()=>{
   wLast=t;
 });
 ['pause','seeking','seeked','waiting','ended'].forEach(n=>v.addEventListener(n,()=>{wLast=null}));
-function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,leave:!!leave,sec:takeSec()})}
+function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,sid,leave:!!leave,sec:takeSec()})}
 function liveBeat(){if(!cur||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
 function liveLeave(){clearInterval(liveI);liveI=null;if(!cur)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
 v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,15000)});
@@ -701,6 +701,7 @@ function destroy(){
 function start(src,title,subs,queue){
   if(cur&&wSec>=1)liveLeave();wLast=null;
   cur={src,title,subs,q:queue||[]};viewSent=false;
+  sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
   $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
