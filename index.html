@@ -196,6 +196,10 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
   .player:not(.isfs) #rs,.player:not(.isfs) #skp,.player:not(.isfs) #sko{display:none!important}
   #skp,#sko{right:clamp(40px,9%,110px)}
 }
+/* boost du volume : petit bouton sous la barre de volume (à droite) */
+.bw #bo{width:44px;height:24px;border:1px solid #ffffff66;border-radius:6px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#fff}
+.bw #bo:hover{background:#ffffff26}
+.bw #bo.on{color:var(--red);border-color:var(--red)}
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
@@ -355,7 +359,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
 
         <div class="bw" id="bw" aria-label="Luminosité"><span data-i="sun"></span><div class="bt"><i id="bf"></i></div></div>
 
-        <div class="bw vw" id="vw" aria-label="Volume"><button id="mute" aria-label="Couper le son"></button><div class="bt"><i id="vf"></i></div></div>
+        <div class="bw vw" id="vw" aria-label="Volume"><button id="mute" aria-label="Couper le son"></button><div class="bt"><i id="vf"></i></div><button id="bo" type="button" aria-label="Boost du volume" title="Boost du volume">100%</button></div>
 
         <div class="mid">
           <button class="rb" id="bk" aria-label="Reculer de 10 secondes" data-i="bk"></button>
@@ -373,7 +377,6 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <div class="acts">
             <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
             <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
-            <button class="ab" id="bo" aria-label="Boost du volume"><span data-i="vol"></span><span id="bol">Boost : 100 %</span></button>
             <button class="ab" id="ft" aria-label="Format de l'image"><span data-i="ratio"></span><span id="ftl">Format : Ajuster</span></button>
             <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
             <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
@@ -1259,7 +1262,7 @@ document.addEventListener('visibilitychange',wlSync);
 /* ---------- boost du volume au-delà de 100 % (Web Audio) ---------- */
 const BOOSTS=[1,1.5,2,3];
 let actx=null,bgain=null,bwait=false;
-const bLab=x=>'Boost : '+Math.round(x*100)+' %';
+const bLab=x=>Math.round(x*100)+'%';
 function boostGraph(){
   if(actx)return true;
   const AC=window.AudioContext||window.webkitAudioContext;
@@ -1276,14 +1279,14 @@ function boostGraph(){
   }catch(e){actx=null;bgain=null;return false}
 }
 function setBoost(x,msg){
-  $('#bol').textContent=bLab(x);
+  $('#bo').textContent=bLab(x);$('#bo').classList.toggle('on',x>1);
   if(x>1&&!boostGraph()){
     if(msg)toast('Boost indisponible avec ce flux');
-    $('#bol').textContent=bLab(1);return false;
+    $('#bo').textContent=bLab(1);$('#bo').classList.remove('on');return false;
   }
   if(bgain){bgain.gain.value=x;if(actx.state!=='running')actx.resume().catch(()=>{})}
   savePref('boost',x);
-  if(msg)toast(bLab(x));
+  if(msg)toast('Boost : '+bLab(x));
   return true;
 }
 $('#bo').onclick=()=>{
@@ -1293,7 +1296,7 @@ $('#bo').onclick=()=>{
 /* boost mémorisé : appliqué au premier geste de l'utilisateur (sinon l'audio resterait muet) */
 function boostRestore(){
   if(!(prefs.boost>1)||actx||bwait)return;
-  $('#bol').textContent=bLab(prefs.boost);bwait=true;
+  $('#bo').textContent=bLab(prefs.boost);$('#bo').classList.add('on');bwait=true;
   const go=()=>{bwait=false;if(!actx)setBoost(prefs.boost,false)};
   ['pointerdown','keydown'].forEach(n=>document.addEventListener(n,go,{once:true,capture:true}));
 }
