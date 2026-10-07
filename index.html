@@ -476,6 +476,15 @@ function sendView(){
 v.addEventListener('playing',()=>{clearTimeout(viewT);viewT=setTimeout(()=>{if(!v.paused)sendView()},5000)});
 v.addEventListener('pause',()=>clearTimeout(viewT));
 
+/* ---------- spectateurs en direct : heartbeat toutes les 15 s tant que la lecture tourne ---------- */
+let liveI=null;
+function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,leave:!!leave})}
+function liveBeat(){if(!cur||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
+function liveLeave(){clearInterval(liveI);liveI=null;if(!cur)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
+v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,15000)});
+v.addEventListener('pause',liveLeave);v.addEventListener('ended',liveLeave);
+window.addEventListener('pagehide',liveLeave);
+
 /* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
 const PASS_HASH='000937cc5efa748969146f517bcbc5af4ae8b9f87ca5f2db209d159f5b17a294';
 const AK='flux-auth';

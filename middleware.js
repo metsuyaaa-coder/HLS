@@ -1,7 +1,7 @@
 // middleware.js (racine du projet Vercel), tout-en-un : pas besoin de dossier api/.
-// Publics : les liens embed (e=1 + lien s=...) et /api/view (compteur de vues).
+// Publics : les liens embed (e=1 + lien s=...), /api/view (compteur de vues) et /api/live (spectateurs en direct).
 // Protégés par SITE_PASSWORD : la page d'accueil, /stats.html et /api/stats.
-export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view'] };
+export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live'] };
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -46,21 +46,57 @@ async function view(request) {
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
+// Spectateurs en direct : chaque lecteur envoie un "heartbeat" toutes les ~15 s pendant la lecture.
+// Un spectateur est compté "en direct" s'il a émis un heartbeat dans les LIVE_TTL dernières ms.
+const LIVE_TTL = 40000;
+async function live(request) {
+  if (request.method !== 'POST') return new Response(null, { status: 405 });
+  let b = {};
+  try { b = await request.json(); } catch (e) {}
+  const src = String(b.src || '').slice(0, 1500);
+  const title = String(b.title || '').slice(0, 200);
+  const vid = String(b.vid || '').slice(0, 80);
+  if (!/^https?:\/\//i.test(src) || !vid || vid.includes('|')) return new Response(null, { status: 400 });
+  const member = vid + '|' + src;
+  try {
+    if (b.leave) await redis([['ZREM', 'live', member]]);
+    else await redis([
+      ['ZADD', 'live', Date.now(), member],
+      ['HSET', 'titles', src, title],
+    ]);
+    return new Response(null, { status: 204 });
+  } catch (e) { return json({ error: String(e.message || e) }, 500); }
+}
+
 async function stats() {
   try {
-    const [plays, titles, last] = (await redis([['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last']])).map(toObj);
-    const srcs = Object.keys(plays);
+    const now = Date.now();
+    const [, plays, titles, last, liveRaw] = (await redis([
+      ['ZREMRANGEBYSCORE', 'live', '-inf', now - LIVE_TTL],
+      ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'],
+      ['ZRANGE', 'live', 0, -1],
+    ])).map((x, i) => (i >= 1 && i <= 3 ? toObj(x) : x));
+    const liveBy = {};
+    let liveTotal = 0;
+    for (const m of liveRaw || []) {
+      const s = m.slice(m.indexOf('|') + 1);
+      liveBy[s] = (liveBy[s] || 0) + 1;
+      liveTotal++;
+    }
+    const srcs = [...new Set([...Object.keys(plays), ...Object.keys(liveBy)])];
     const uniq = srcs.length ? await redis(srcs.map(s => ['PFCOUNT', 'uniq:' + s])) : [];
     const videos = srcs.map((s, i) => ({
-      src: s, title: titles[s] || '', plays: +plays[s] || 0, viewers: uniq[i] || 0, last: +last[s] || 0,
-    })).sort((a, b) => b.plays - a.plays);
-    return json({ videos });
+      src: s, title: titles[s] || '', plays: +plays[s] || 0, viewers: uniq[i] || 0,
+      last: +last[s] || 0, live: liveBy[s] || 0,
+    })).sort((a, b) => b.live - a.live || b.plays - a.plays);
+    return json({ videos, liveTotal });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
 export default async function middleware(request) {
   const u = new URL(request.url), p = u.searchParams;
   if (u.pathname === '/api/view') return view(request);
+  if (u.pathname === '/api/live') return live(request);
 
   const home = u.pathname === '/' || u.pathname === '/index.html';
   const embed = home && (p.get('e') || p.get('embed')) === '1' && (p.get('s') || p.get('src'));

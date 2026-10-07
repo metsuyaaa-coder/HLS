@@ -13,7 +13,7 @@ header{display:flex;align-items:center;gap:16px;padding:20px 4vw}
 .wrap{max-width:900px;margin:0 auto;padding:10px 20px 60px}
 h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
 .lead{color:var(--mu);margin:0 0 22px}
-.tot{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:22px}
+.tot{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
 .tot div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .tot b{display:block;font-size:34px;font-variant-numeric:tabular-nums}
 .tot span{color:var(--mu);font-size:14px}
@@ -23,24 +23,28 @@ input:focus{border-color:#fff;outline:0}
 button{font:inherit;color:#fff;background:rgba(109,109,110,.7);border:0;border-radius:8px;padding:10px 16px;cursor:pointer}
 button:hover{background:rgba(109,109,110,.45)}
 .list{display:grid;gap:8px}
-.row{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+.row{display:grid;grid-template-columns:1fr auto auto auto;gap:18px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
 .row>div:first-child{min-width:0}
 .row b.t{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row small{display:block;color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
 .n{text-align:center;min-width:70px}
 .n b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
 .n span{color:var(--mu);font-size:12px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#46d369;margin-right:8px;vertical-align:middle;box-shadow:0 0 0 0 rgba(70,211,105,.7);animation:pulse 1.6s infinite}
+.dot.off{background:#666;animation:none}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(70,211,105,0)}100%{box-shadow:0 0 0 0 rgba(70,211,105,0)}}
+.n.lv b{color:#46d369}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
-@media(max-width:560px){.row{grid-template-columns:1fr 1fr}.row>div:first-child{grid-column:1/-1}}
+@media(max-width:560px){.tot{grid-template-columns:1fr}.row{grid-template-columns:1fr 1fr 1fr}.row>div:first-child{grid-column:1/-1}}
 </style>
 </head>
 <body>
 <header><a class="logo" href="/">FLUX</a><a href="/" style="color:var(--mu)">← Retour au générateur</a></header>
 <div class="wrap">
   <h1>Statistiques</h1>
-  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif).</p>
-  <div class="tot"><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
+  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif). « En direct » = lecture en cours à l'instant (actualisé toutes les 10 s).</p>
+  <div class="tot"><div><b id="tl"><i class="dot off" id="ld"></i><span id="tln" style="font-size:inherit;color:inherit">–</span></b><span>en direct maintenant</span></div><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
   <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
   <div class="msg" id="msg"></div>
   <div class="list" id="list"></div>
@@ -59,7 +63,7 @@ function show(){
     t.className='t';t.textContent=d.title||'Sans titre';s.textContent=d.src+(d.last?'  ·  '+ago(d.last):'');
     a.append(t,s);
     const n=(v,l)=>{const x=document.createElement('div');x.className='n';x.innerHTML='<b></b><span></span>';x.firstChild.textContent=v;x.lastChild.textContent=l;return x};
-    r.append(a,n(d.plays,'vues'),n(d.viewers,'spectateurs'));box.append(r);
+    const lv=n(d.live||0,'en direct');if(d.live)lv.classList.add('lv');r.append(a,lv,n(d.plays,'vues'),n(d.viewers,'spectateurs'));box.append(r);
   });
 }
 async function load(){
@@ -69,12 +73,13 @@ async function load(){
     const j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
     data=j.videos;
+    const L=j.liveTotal||0;$('#tln').textContent=L;$('#ld').className='dot'+(L?'':' off');
     $('#tp').textContent=data.reduce((a,d)=>a+d.plays,0);
     $('#tv').textContent=data.length;
     show();
   }catch(e){$('#msg').textContent='Impossible de charger les stats : '+e.message}
 }
-$('#rf').onclick=load;$('#q').oninput=show;load();
+$('#rf').onclick=load;$('#q').oninput=show;load();setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>
 </html>
