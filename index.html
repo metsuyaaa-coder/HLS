@@ -164,8 +164,12 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 /* épisode suivant */
 #nx{position:absolute;right:22px;bottom:112px;z-index:3;width:min(300px,calc(100% - 44px));display:grid;gap:8px;background:#000e;border:1px solid #ffffff2e;border-radius:12px;padding:14px}
 #nx[hidden]{display:none}
-#skp,#sko{position:absolute;right:22px;bottom:112px;z-index:3;padding:clamp(9px,1.4vw,14px) clamp(16px,2.4vw,26px);border:1px solid #ffffffb3;background:#000b;color:#fff;font-weight:700;font-size:clamp(14px,1.8vw,18px);border-radius:6px;display:inline-flex;align-items:center;gap:8px}
-#skp:hover,#sko:hover{background:#fff;color:#000}
+#skp,#sko{position:absolute;right:clamp(16px,4%,56px);bottom:112px;z-index:3;padding:clamp(10px,1.7vw,19px) clamp(20px,3.4vw,40px);border:0;background:#fff;color:#141414;font-weight:500;font-size:clamp(15px,2.1vw,23px);line-height:1.2;letter-spacing:.01em;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 14px #0008;animation:skin .25s ease-out}
+#skp:hover,#sko:hover{background:#ffffffbf}
+#skp:active,#sko:active{transform:scale(.97)}
+#skp:focus-visible,#sko:focus-visible{outline:3px solid #fff;outline-offset:3px}
+@keyframes skin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){#skp,#sko{animation:none}}
 #skp[hidden],#sko[hidden],.locked #skp,.locked #sko,.end #skp,.end #sko{display:none}
 .ed{display:grid;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .ed h3{margin:0;font-size:17px}
@@ -315,8 +319,8 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
         <div class="pbs"><button class="pbtn" id="enr"></button><button class="pbtn sec" id="enn" hidden></button></div>
       </div>
       <div id="rs" hidden><span id="rst"></span><button id="rsb" type="button">Depuis le début</button></div>
-      <button id="skp" type="button" hidden>Passer l'intro ▸▸</button>
-      <button id="sko" type="button" hidden>Passer le générique ▸▸</button>
+      <button id="skp" type="button" hidden>Passer l'intro</button>
+      <button id="sko" type="button" hidden>Passer le générique</button>
       <div id="nx" hidden>
         <span class="nx0">ÉPISODE SUIVANT</span>
         <span class="nx1" id="nxt"></span>
