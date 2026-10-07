@@ -163,9 +163,13 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 /* épisode suivant */
 #nx{position:absolute;right:22px;bottom:112px;z-index:3;width:min(300px,calc(100% - 44px));display:grid;gap:8px;background:#000e;border:1px solid #ffffff2e;border-radius:12px;padding:14px}
 #nx[hidden]{display:none}
-#skp{position:absolute;right:22px;bottom:112px;z-index:3;padding:clamp(9px,1.4vw,14px) clamp(16px,2.4vw,26px);border:1px solid #ffffffb3;background:#000b;color:#fff;font-weight:700;font-size:clamp(14px,1.8vw,18px);border-radius:6px;display:inline-flex;align-items:center;gap:8px}
-#skp:hover{background:#fff;color:#000}
-#skp[hidden],.locked #skp,.end #skp{display:none}
+#skp,#sko{position:absolute;right:22px;bottom:112px;z-index:3;padding:clamp(9px,1.4vw,14px) clamp(16px,2.4vw,26px);border:1px solid #ffffffb3;background:#000b;color:#fff;font-weight:700;font-size:clamp(14px,1.8vw,18px);border-radius:6px;display:inline-flex;align-items:center;gap:8px}
+#skp:hover,#sko:hover{background:#fff;color:#000}
+#skp[hidden],#sko[hidden],.locked #skp,.locked #sko,.end #skp,.end #sko{display:none}
+.ed{display:grid;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.ed h3{margin:0;font-size:17px}
+.ed2{display:grid;grid-template-columns:1fr auto auto;gap:8px}
+.ed2 .ghost{white-space:nowrap}
 #nx .nx0{color:var(--mu);font-size:13px;font-weight:600;letter-spacing:.04em}
 #nx .nx1{font-size:16px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #nx .nxb{display:flex;gap:8px}
@@ -240,6 +244,9 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Passer l'intro (facultatif)
         <input type="text" id="introIn" placeholder="Début-fin de l'intro, ex. 0:45-1:50" autocomplete="off">
       </label>
+      <label>Générique de fin / outro (facultatif)
+        <input type="text" id="outroIn" placeholder="Début du générique, ex. 42:10" autocomplete="off">
+      </label>
       <div>
         <div style="font-size:14px;color:var(--mu);margin-bottom:6px">Sous-titres externes (.vtt ou .srt, facultatif)</div>
         <div id="subs" style="display:grid;gap:8px"></div>
@@ -266,6 +273,10 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Intro commune à tous les liens (facultatif)
         <input type="text" id="bintro" placeholder="ex. 0:45-1:50 : ou ajoute  intro 0:45-1:50  à la fin d'une ligne pour un seul épisode" autocomplete="off">
       </label>
+      <label>Générique / outro commun (facultatif)
+        <input type="text" id="bouro" placeholder="ex. 42:10 : ou ajoute  outro 42:10  à la fin d'une ligne" autocomplete="off">
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" id="bover" style="width:18px;height:18px;accent-color:#e50914">Remplacer les intros / outros déjà présents dans les liens collés (écris « aucune » dans un champ pour la supprimer)</label>
       <div class="msg" id="batchMsg" role="alert"></div>
       <button type="button" class="btn" id="batchGo">Générer les liens</button>
       <div id="batchOut" hidden>
@@ -304,6 +315,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       </div>
       <div id="rs" hidden><span id="rst"></span><button id="rsb" type="button">Depuis le début</button></div>
       <button id="skp" type="button" hidden>Passer l'intro ▸▸</button>
+      <button id="sko" type="button" hidden>Passer le générique ▸▸</button>
       <div id="nx" hidden>
         <span class="nx0">ÉPISODE SUIVANT</span>
         <span class="nx1" id="nxt"></span>
@@ -353,6 +365,17 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
   <div class="share">
     <h2>Partager</h2>
     <p>Ces liens pointent vers ce lecteur, jamais vers le .m3u8 brut : la vidéo reste lue ici.</p>
+    <div class="ed" id="ed">
+      <h3>Intro et générique de cette vidéo</h3>
+      <p>Mets la vidéo au bon moment, puis clique « Début ici » / « Fin ici ». Les liens ci-dessous se mettent à jour tout de suite : tu peux ouvrir un ancien lien, régler ici, puis recopier le nouveau.</p>
+      <label>Intro (début-fin)
+        <div class="ed2"><input type="text" id="shI" placeholder="0:45-1:50" autocomplete="off"><button class="ghost" type="button" id="shIa">Début ici</button><button class="ghost" type="button" id="shIb">Fin ici</button></div>
+      </label>
+      <label>Générique / outro (début, la fin est facultative)
+        <div class="ed2"><input type="text" id="shO" placeholder="42:10" autocomplete="off"><button class="ghost" type="button" id="shOa">Début ici</button><button class="ghost" type="button" id="shOb">Fin ici</button></div>
+      </label>
+      <div class="msg" id="shMsg"></div>
+    </div>
     <label>Lien direct
       <div class="copy"><textarea id="lnk" rows="2" readonly></textarea><button class="ghost" data-copy="lnk">Copier</button></div>
     </label>
@@ -520,23 +543,27 @@ $('#f').onsubmit=e=>{
   src=stripToken(full(src));
   if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
   const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
-  const iv=$('#introIn').value.trim(),intro=normIntro(iv);
+  const iv=$('#introIn').value.trim(),intro=normIntro(iv),ov=$('#outroIn').value.trim(),outro=normOutro(ov);
   if(iv&&!intro){$('#msg').textContent="Intro invalide : écris par exemple 0:45-1:50 (début-fin).";return}
-  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false,null,intro));
+  if(ov&&!outro){$('#msg').textContent="Générique invalide : écris par exemple 42:10 (début) ou 42:10-44:00.";return}
+  history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false,null,intro,outro));
   route();
 };
 /* intro : "0:45-1:50" (ou 45-110) -> "45-110" */
 const tSec=s=>{const p=String(s).trim().split(':');if(p.length>3||p.some(x=>!/^\d+(?:[.,]\d+)?$/.test(x)))return null;return p.reduce((a,x)=>a*60+parseFloat(x.replace(',','.')),0)};
 const normIntro=x=>{const m=String(x||'').match(/^\s*([\d:.,]+)\s*(?:[-–—>]+|à|to)\s*([\d:.,]+)\s*$/i);if(!m)return'';const a=tSec(m[1]),b=tSec(m[2]);if(a==null||b==null||b<=a)return'';return Math.round(a)+'-'+Math.round(b)};
+const normOutro=x=>{x=String(x||'').trim();if(/^[\d:.,]+$/.test(x)){const a=tSec(x);return a==null?'':String(Math.round(a))}return normIntro(x)};
+const outroT=x=>{const m=String(x||'').match(/^(\d+)(?:-(\d+))?$/);return m?[+m[1],m[2]?+m[2]:Infinity]:null};
 const introT=x=>{const m=String(x||'').match(/^(\d+)-(\d+)$/);return m?[+m[1],+m[2]]:null};
 const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
 const noHttps=u=>u.replace(/^https:\/\//i,'');
-function mk(src,title,subs,embed,q,intro){
+function mk(src,title,subs,embed,q,intro,outro){
   const p=['s='+encQ(noHttps(src))];
   if(title&&title!==guessTitle(src))p.push('t='+encQ(title));
   subs.forEach(x=>p.push('c='+encQ(shortLab(x.label)+'|'+noHttps(x.url))));
   if(intro)p.push('i='+intro);
-  (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).concat(x.intro?['@i='+x.intro]:[]).join('\n'))));
+  if(outro)p.push('o='+outro);
+  (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).concat(x.intro?['@i='+x.intro]:[]).concat(x.outro?['@o='+x.outro]:[]).join('\n'))));
   if(embed)p.push('e=1');
   return base+'?'+p.join('&');
 }
@@ -565,23 +592,25 @@ function fluxItem(link){
   if(!raw||!/\./.test(raw))return null;
   if(!((q.get('e')||q.get('embed'))==='1'||q.has('t')||q.has('title')||q.has('c')||q.has('sub')))return null;
   const src=stripToken(full(raw));
-  return{src,title:smartName(q.get('t')||q.get('title')||'')||guessTitle(src),subs:parseSubs([...q.getAll('c'),...q.getAll('sub')]),intro:normIntro(q.get('i')||'')};
+  return{src,title:smartName(q.get('t')||q.get('title')||'')||guessTitle(src),subs:parseSubs([...q.getAll('c'),...q.getAll('sub')]),intro:normIntro(q.get('i')||''),outro:normOutro(q.get('o')||'')};
 }
 const IRE=/(?:^|[\s|,;])intro\s*[=:]?\s*([\d:.,]+\s*(?:[-–—>]+|à|to)\s*[\d:.,]+)/i;
+const ORE=/(?:^|[\s|,;])(?:outro|g[ée]n[ée]rique)\s*[=:]?\s*([\d:.,]+(?:\s*(?:[-–—>]+|à|to)\s*[\d:.,]+)?)/i;
 function parseBatch(txt){
-  const out=[];let pend='',pI='';
+  const out=[];let pend='',pI='',pO='';
   txt.replace(/\r/g,'').split('\n').forEach(line=>{
     line=line.trim();if(!line)return;
-    let li='';const im=line.match(IRE);
-    if(im){li=normIntro(im[1]);line=line.replace(im[0],' ').trim()}
+    let li='',lo='';
+    const im=line.match(IRE);if(im){li=normIntro(im[1]);line=line.replace(im[0],' ').trim()}
+    const om=line.match(ORE);if(om){lo=normOutro(om[1]);line=line.replace(om[0],' ').trim()}
     let had=false;
-    (line.match(FLUXRE)||[]).forEach(l=>{const it=fluxItem(l);if(it){had=true;if(li&&!it.intro)it.intro=li;out.push(it);line=line.replace(l,' ')}});
+    (line.match(FLUXRE)||[]).forEach(l=>{const it=fluxItem(l);if(it){had=true;if(li)it.intro=li;if(lo)it.outro=lo;out.push(it);line=line.replace(l,' ')}});
     line=line.trim();
-    if(!line){if(had)pend='';else if(li)pI=li;return}
+    if(!line){if(had)pend='';else{if(li)pI=li;if(lo)pO=lo}return}
     const m=line.match(URLRE);
-    if(!m){pend=stripSep(line);if(li)pI=li;return}
+    if(!m){pend=stripSep(line);if(li)pI=li;if(lo)pO=lo;return}
     const name=stripSep(line.replace(m[0],' '))||pend;pend='';
-    out.push({src:stripToken(full(m[0])),title:smartName(name),intro:li||pI});pI='';
+    out.push({src:stripToken(full(m[0])),title:smartName(name),intro:li||pI,outro:lo||pO});pI='';pO='';
   });
   return out;
 }
@@ -593,30 +622,30 @@ function batchQueue(b){
   return batch.map(x=>({x,i:epInfo(x.title||guessTitle(x.src))}))
     .filter(o=>o.i&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,c)=>a.i.s-c.i.s||a.i.e-c.i.e)
-    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src),subs:o.x.subs||[],intro:o.x.intro||''}));
+    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src),subs:o.x.subs||[],intro:o.x.intro||'',outro:o.x.outro||''}));
 }
 /* bibliothèque : les liens déjà générés en mode lot sont retenus pour connaître l'épisode suivant même avec un lien simple */
 const LIBK='flux-lib';
 function libGet(){try{return JSON.parse(localStorage.getItem(LIBK))||{}}catch(e){return{}}}
 function libAdd(items){
   const m=libGet();
-  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]={t,c:b.subs||[],i:b.intro||''}});
+  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]={t,c:b.subs||[],i:b.intro||'',o:b.outro||''}});
   const k=Object.keys(m);if(k.length>600)k.slice(0,k.length-600).forEach(x=>delete m[x]);
   try{localStorage.setItem(LIBK,JSON.stringify(m))}catch(e){}
 }
 function libQueue(c){
   const i=epInfo(c.title||guessTitle(c.src));if(!i)return[];
   const m=libGet(),seen=new Set();
-  return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],intro:v.i||'',i:epInfo(v.t)}})
+  return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],intro:v.i||'',outro:v.o||'',i:epInfo(v.t)}})
     .filter(o=>o.i&&o.src!==c.src&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,b)=>a.i.s-b.i.s||a.i.e-b.i.e)
     .filter(o=>{const k=o.i.s+'-'+o.i.e;if(seen.has(k))return false;seen.add(k);return true})
-    .map(o=>({src:o.src,title:o.title,subs:o.subs,intro:o.intro||''}));
+    .map(o=>({src:o.src,title:o.title,subs:o.subs,intro:o.intro||'',outro:o.outro||''}));
 }
 function batchLink(b){
   const t=b.title||guessTitle(b.src),k=$('#bkind').value,q=batchQueue(b);
-  if(k==='lnk')return mk(b.src,t,b.subs||[],false,q,b.intro);
-  const u=mk(b.src,t,b.subs||[],true,q,b.intro);
+  if(k==='lnk')return mk(b.src,t,b.subs||[],false,q,b.intro,b.outro);
+  const u=mk(b.src,t,b.subs||[],true,q,b.intro,b.outro);
   if(k==='embu')return u;
   return '<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
 }
@@ -640,14 +669,16 @@ function renderBatch(){
 }
 $('#batchGo').onclick=()=>{
   batch=parseBatch($('#batchIn').value);
-  const di=normIntro($('#bintro').value);
-  if($('#bintro').value.trim()&&!di){$('#batchMsg').textContent="Intro commune invalide : écris par exemple 0:45-1:50.";return}
-  if(di)batch.forEach(b=>{if(!b.intro)b.intro=di});
+  const cv=(raw,fn)=>{raw=raw.trim();if(!raw)return null;if(/^(aucune?|none|off|non|supprimer)$/i.test(raw))return'';const n=fn(raw);return n===''?undefined:n};
+  const di=cv($('#bintro').value,normIntro),dO=cv($('#bouro').value,normOutro),ov=$('#bover').checked;
+  if(di===undefined){$('#batchMsg').textContent="Intro commune invalide : écris par exemple 0:45-1:50.";return}
+  if(dO===undefined){$('#batchMsg').textContent="Générique commun invalide : écris par exemple 42:10.";return}
+  batch.forEach(b=>{if(di!==null&&(ov||!b.intro))b.intro=di;if(dO!==null&&(ov||!b.outro))b.outro=dO});
   libAdd(batch);
   $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
   renderBatch();
 };
-$('#bintro').onchange=()=>{if(batch.length)$('#batchGo').click()};
+$('#bintro').onchange=$('#bouro').onchange=$('#bover').onchange=()=>{if(batch.length)$('#batchGo').click()};
 $('#bkind').onchange=()=>{if(batch.length)renderBatch()};
 $('#bchain').onchange=()=>{if(batch.length)renderBatch()};
 $('#copyAll').onclick=e=>copyText(batch.map(batchLink).join('\n'),e.currentTarget);
@@ -712,8 +743,8 @@ function route(){
   $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
   if(!src){document.title='Flux – Lecteur HLS';return}
   const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
-  const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1)),rest=parts.slice(1),il=rest.find(l=>l.startsWith('@i='));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(rest.filter(l=>!l.startsWith('@i='))),intro:il?normIntro(il.slice(3).replace(/^(\d+)-(\d+)$/,'$1-$2')):''}});
-  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq,normIntro(q.get('i')||''));
+  const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1)),rest=parts.slice(1),il=rest.find(l=>l.startsWith('@i=')),ol=rest.find(l=>l.startsWith('@o='));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(rest.filter(l=>!/^@[io]=/.test(l))),intro:il?normIntro(il.slice(3)):'',outro:ol?normOutro(ol.slice(3)):''}});
+  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq,normIntro(q.get('i')||''),normOutro(q.get('o')||''));
 }
 window.addEventListener('popstate',route);
 
@@ -723,18 +754,14 @@ function destroy(){
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);
 }
-function start(src,title,subs,queue,intro){
+function start(src,title,subs,queue,intro,outro){
   if(cur&&wSec>=1)liveLeave();wLast=null;
-  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro)};viewSent=false;$('#skp').hidden=true;
+  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
   $('#ttl').textContent=title;document.title=(title||'Lecteur')+' – Flux';
-  const u=mk(src,title,subs,true,cur.q,cur.intro);
-  $('#lnk').value=mk(src,title,subs,false,cur.q,cur.intro);
-  $('#embu').value=u;
-  $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
-  $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+  refreshShare();fillEd();
   v.crossOrigin='anonymous';
   subs.forEach((s,i)=>addExt(s,i===0));
   if(pos)showResume(pos);
@@ -798,7 +825,7 @@ function setAudio(i){
   setTimeout(()=>{switching=false},10000);
 }
 function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
-$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro)}};
+$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
    donc on garde les sous-titres externes en mémoire à part */
@@ -1005,7 +1032,7 @@ function qLabel(){if(hls)$('#ql').textContent='Qualité ('+(hls.autoLevelEnabled
 const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
 const toggle=()=>v.paused?v.play().catch(()=>{}):v.pause();
 const seekBy=d=>{v.currentTime=Math.max(0,Math.min(v.duration||1e9,v.currentTime+d))};
-const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,cur.q),'_blank');
+const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro),'_blank');
 function fs(){
   if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return}
   if(pl.requestFullscreen&&document.fullscreenEnabled)pl.requestFullscreen().catch(openTab);
@@ -1119,14 +1146,48 @@ function pzArm(){clearTimeout(pzT);pl.classList.remove('psd');if(v.paused)pzT=se
 $('#pzb').innerHTML=svg(IC.play)+'<span>Reprendre</span>';
 $('#pzb').onclick=()=>v.play().catch(()=>{});
 
-/* ---------- passer l'intro ---------- */
-const skp=$('#skp');
+/* ---------- passer l'intro / le générique ---------- */
+const skp=$('#skp'),sko=$('#sko');
 function skpSync(){
-  const i=cur&&cur.introT,t=v.currentTime,on=!!i&&!v.ended&&t>=i[0]&&t<i[1]-0.5;
-  if(skp.hidden===on)skp.hidden=!on;
+  const t=v.currentTime,d=v.duration,i=cur&&cur.introT,o=cur&&cur.outroT;
+  const a=!!i&&!v.ended&&t>=i[0]&&t<i[1]-0.5;
+  const b=!!o&&!hasNext()&&!v.ended&&t>=o[0]&&t<Math.min(o[1],isFinite(d)?d:1e9)-0.5;
+  if(skp.hidden===a)skp.hidden=!a;
+  if(sko.hidden===b)sko.hidden=!b;
 }
 ['timeupdate','seeked','loadedmetadata'].forEach(n=>v.addEventListener(n,skpSync));
 skp.onclick=()=>{if(cur&&cur.introT){v.currentTime=cur.introT[1];skp.hidden=true}};
+sko.onclick=()=>{if(cur&&cur.outroT){const o=cur.outroT,d=v.duration;v.currentTime=isFinite(o[1])?o[1]:Math.max(0,(isFinite(d)?d:0)-0.3);sko.hidden=true}};
+
+/* liens de partage + éditeur d'intro / générique (utile pour modifier un lien déjà existant) */
+const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
+function refreshShare(){
+  if(!cur)return;
+  const u=mk(cur.src,cur.title,cur.subs,true,cur.q,cur.intro,cur.outro);
+  $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro);
+  $('#embu').value=u;
+  $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+  $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
+}
+function fillEd(){$('#shI').value=rng(cur.intro);$('#shO').value=rng(cur.outro);$('#shMsg').textContent=''}
+function applyEd(){
+  if(!cur)return;
+  const iv=$('#shI').value.trim(),ov=$('#shO').value.trim(),ni=normIntro(iv),no=normOutro(ov);
+  $('#shMsg').textContent=iv&&!ni?'Intro incomplète ou invalide (ex. 0:45-1:50).':ov&&!no?'Générique invalide (ex. 42:10 ou 42:10-44:00).':'';
+  if(!(iv&&!ni))Object.assign(cur,{intro:ni,introT:introT(ni)});
+  if(!(ov&&!no))Object.assign(cur,{outro:no,outroT:outroT(no)});
+  refreshShare();skpSync();
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro))}catch(e){}}
+}
+function markEd(inp,idx){
+  const t=Math.round(v.currentTime),p=inp.value.split(/[-–—>]/).map(x=>x.trim());
+  let a=p[0]?tSec(p[0]):null,b=p[1]?tSec(p[1]):null;
+  if(idx===0)a=t;else{b=t;if(a==null)a=0}
+  inp.value=(a!=null?fmt(a):'')+(b!=null?'-'+fmt(b):'');applyEd();
+}
+$('#shI').onchange=$('#shO').onchange=applyEd;
+$('#shIa').onclick=()=>markEd($('#shI'),0);$('#shIb').onclick=()=>markEd($('#shI'),1);
+$('#shOa').onclick=()=>markEd($('#shO'),0);$('#shOb').onclick=()=>markEd($('#shO'),1);
 
 /* ---------- épisode suivant + écran de fin ---------- */
 const hasNext=()=>!!(cur&&cur.q&&cur.q.length);
@@ -1135,16 +1196,17 @@ function goNext(){
   if(!hasNext())return;
   const n=cur.q[0],rest=cur.q.slice(1);
   liveLeave();destroy();
-  start(n.src,n.title,n.subs||[],rest,n.intro||'');
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest,n.intro||''))}catch(e){}}
+  start(n.src,n.title,n.subs||[],rest,n.intro||'',n.outro||'');
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest,n.intro||'',n.outro||''))}catch(e){}}
 }
 function nxSync(){
   const box=$('#nx');
   if(!hasNext()||nxOff||v.ended){box.hidden=true;return}
   const d=v.duration,r=d-v.currentTime;
-  if(!isFinite(d)||d<90||r>NX_T||r<=0){box.hidden=true;return}
+  const W=cur.outroT?Math.max(NX_T,d-cur.outroT[0]):NX_T;
+  if(!isFinite(d)||d<90||r>W||r<=0){box.hidden=true;return}
   if(box.hidden){$('#nxt').textContent=cur.q[0].title||'Épisode suivant';$('#nxgo').innerHTML=svg(IC.play)+'<span>Lancer</span>';box.hidden=false}
-  $('#nxgo').style.setProperty('--p',((NX_T-r)/NX_T*100)+'%');
+  $('#nxgo').style.setProperty('--p',((W-r)/W*100)+'%');
 }
 $('#nxgo').onclick=goNext;
 $('#nxno').onclick=()=>{nxOff=true;$('#nx').hidden=true};
