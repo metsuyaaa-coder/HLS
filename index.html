@@ -245,7 +245,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
 
     <div class="box" id="batchBox">
       <h2>Plusieurs liens d'un coup</h2>
-      <p>Colle un lien par ligne, avec le nom si tu veux : <b>Nom | lien</b> ou <b>lien | Nom</b>. Tu peux aussi mettre le nom sur une ligne et le lien sur la suivante. Chaque lien généré pointe vers ce lecteur.</p>
+      <p>Colle un lien par ligne, avec le nom si tu veux : <b>Nom | lien</b> ou <b>lien | Nom</b>. Tu peux aussi mettre le nom sur une ligne et le lien sur la suivante. Chaque lien généré pointe vers ce lecteur. Tu peux aussi coller des <b>liens Flux déjà générés</b> (embed avec sous-titres) : ils sont repris tels quels et enchaînés.</p>
       <textarea class="big" id="batchIn" spellcheck="false" placeholder="Film 1 | https://exemple.com/a/master.m3u8&#10;Film 2 | https://exemple.com/b/master.m3u8&#10;Épisode 3&#10;https://exemple.com/c/index.m3u8"></textarea>
       <div class="row2">
         <button type="button" class="ghost" id="batchFileBtn">Importer un fichier .txt / .csv</button>
@@ -507,7 +507,7 @@ $('#addSub').onclick=()=>addRow();
 $('#f').onsubmit=e=>{
   e.preventDefault();
   let src=$('#src').value.trim();
-  src=full(src);
+  src=stripToken(full(src));
   if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
   const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
   history.pushState(null,'',mk(src,smartName($('#ttlIn').value.trim())||guessTitle(src),subs,false));
@@ -519,7 +519,7 @@ function mk(src,title,subs,embed,q){
   const p=['s='+encQ(noHttps(src))];
   if(title&&title!==guessTitle(src))p.push('t='+encQ(title));
   subs.forEach(x=>p.push('c='+encQ(shortLab(x.label)+'|'+noHttps(x.url))));
-  (q||[]).forEach(x=>p.push('n='+encQ(String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src))));
+  (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).join('\n'))));
   if(embed)p.push('e=1');
   return base+'?'+p.join('&');
 }
@@ -532,14 +532,35 @@ $('#src').addEventListener('input',()=>{const t=$('#ttlIn');if(!t.dataset.e)t.va
 const URLRE=/(?:https?:\/\/)?[^\s|;]*\.m3u8[^\s|;]*|https?:\/\/[^\s|;]+/i;
 const stripSep=s=>s.replace(/^[\s|;,:–—-]+|[\s|;,:–—-]+$/g,'');
 let batch=[];
+/* liens Flux déjà générés (…/?s=…&t=Titre&c=fr|sous-titre&e=1) : on récupère lien, titre et sous-titres */
+/* enlève ?token=… (lié à l'IP et à une date d'expiration) des liens collés */
+function stripToken(u){
+  const i=u.search(/[?&]token=/i);if(i<0)return u;
+  const m=u.slice(i).match(/^[?&]token=[^&#\s]*/i);
+  let r=u.slice(0,i)+u.slice(i+m[0].length);
+  if(m[0][0]==='?'&&r[i]==='&')r=r.slice(0,i)+'?'+r.slice(i+1);
+  return r;
+}
+const FLUXRE=/https?:\/\/\S*[?&](?:s|src)=\S*/gi;
+function fluxItem(link){
+  let u;try{u=new URL(link)}catch(e){return null}
+  const q=u.searchParams,raw=q.get('s')||q.get('src');
+  if(!raw||!/\./.test(raw))return null;
+  if(!((q.get('e')||q.get('embed'))==='1'||q.has('t')||q.has('title')||q.has('c')||q.has('sub')))return null;
+  const src=stripToken(full(raw));
+  return{src,title:smartName(q.get('t')||q.get('title')||'')||guessTitle(src),subs:parseSubs([...q.getAll('c'),...q.getAll('sub')])};
+}
 function parseBatch(txt){
   const out=[];let pend='';
   txt.replace(/\r/g,'').split('\n').forEach(line=>{
     line=line.trim();if(!line)return;
+    (line.match(FLUXRE)||[]).forEach(l=>{const it=fluxItem(l);if(it){out.push(it);line=line.replace(l,' ')}});
+    line=line.trim();
+    if(!line){pend='';return}
     const m=line.match(URLRE);
     if(!m){pend=stripSep(line);return}
     const name=stripSep(line.replace(m[0],' '))||pend;pend='';
-    out.push({src:full(m[0]),title:smartName(name)});
+    out.push({src:stripToken(full(m[0])),title:smartName(name)});
   });
   return out;
 }
@@ -551,30 +572,30 @@ function batchQueue(b){
   return batch.map(x=>({x,i:epInfo(x.title||guessTitle(x.src))}))
     .filter(o=>o.i&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,c)=>a.i.s-c.i.s||a.i.e-c.i.e)
-    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src)}));
+    .map(o=>({src:o.x.src,title:o.x.title||guessTitle(o.x.src),subs:o.x.subs||[]}));
 }
 /* bibliothèque : les liens déjà générés en mode lot sont retenus pour connaître l'épisode suivant même avec un lien simple */
 const LIBK='flux-lib';
 function libGet(){try{return JSON.parse(localStorage.getItem(LIBK))||{}}catch(e){return{}}}
 function libAdd(items){
   const m=libGet();
-  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]=t});
+  items.forEach(b=>{const t=b.title||guessTitle(b.src);if(epInfo(t))m[b.src]={t,c:b.subs||[]}});
   const k=Object.keys(m);if(k.length>600)k.slice(0,k.length-600).forEach(x=>delete m[x]);
   try{localStorage.setItem(LIBK,JSON.stringify(m))}catch(e){}
 }
 function libQueue(c){
   const i=epInfo(c.title||guessTitle(c.src));if(!i)return[];
   const m=libGet(),seen=new Set();
-  return Object.keys(m).map(src=>({src,title:m[src],i:epInfo(m[src])}))
+  return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],i:epInfo(v.t)}})
     .filter(o=>o.i&&o.src!==c.src&&o.i.show===i.show&&(o.i.s>i.s||(o.i.s===i.s&&o.i.e>i.e)))
     .sort((a,b)=>a.i.s-b.i.s||a.i.e-b.i.e)
     .filter(o=>{const k=o.i.s+'-'+o.i.e;if(seen.has(k))return false;seen.add(k);return true})
-    .map(o=>({src:o.src,title:o.title}));
+    .map(o=>({src:o.src,title:o.title,subs:o.subs}));
 }
 function batchLink(b){
   const t=b.title||guessTitle(b.src),k=$('#bkind').value,q=batchQueue(b);
-  if(k==='lnk')return mk(b.src,t,[],false,q);
-  const u=mk(b.src,t,[],true,q);
+  if(k==='lnk')return mk(b.src,t,b.subs||[],false,q);
+  const u=mk(b.src,t,b.subs||[],true,q);
   if(k==='embu')return u;
   return '<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
 }
@@ -645,6 +666,7 @@ $('#gf').onsubmit=async e=>{
 };
 
 /* ---------- routage ---------- */
+const parseSubs=a=>a.map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}}).filter(s=>s.url);
 function route(){
   const q=new URLSearchParams(location.search),raw=q.get('s')||q.get('src'),src=raw?full(raw):'';
   const open=(q.get('e')||q.get('embed'))==='1'&&!!src;
@@ -654,7 +676,7 @@ function route(){
   $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
   if(!src){document.title='Flux – Lecteur HLS';return}
   const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
-  const nq=q.getAll('n').map(x=>{const i=x.indexOf('|');const u=full(i<0?x:x.slice(i+1));return{src:u,title:(i>0?x.slice(0,i):'')||guessTitle(u)}});
+  const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(parts.slice(1))}});
   start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq);
 }
 window.addEventListener('popstate',route);
@@ -1059,8 +1081,8 @@ function goNext(){
   if(!hasNext())return;
   const n=cur.q[0],rest=cur.q.slice(1);
   liveLeave();destroy();
-  start(n.src,n.title,[],rest);
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,[],false,rest))}catch(e){}}
+  start(n.src,n.title,n.subs||[],rest);
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest))}catch(e){}}
 }
 function nxSync(){
   const box=$('#nx');
