@@ -116,6 +116,11 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 .sb{display:flex;gap:6px;flex-wrap:wrap}
 .sb .ghost{flex:1;padding:8px 6px}
 .shint{margin:0;font-size:13px;color:var(--mu);line-height:1.4}
+.addsub{min-width:min(420px,72vw);display:grid;gap:12px;align-content:start}
+.addsub input[type=text],.addsub input[type=url]{padding:11px;font-size:15px}
+.addsub .or{color:var(--mu);font-size:13px;text-align:center}
+.addsub .ok{color:#46d369;font-size:14px;min-height:1em}
+.addsub .msg{min-height:1em}
 .modal.clear{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;place-items:start center;pointer-events:none}
 .modal.clear .card{pointer-events:auto;margin-top:8px;background:#181818e0;max-height:calc(100% - 16px)}
 #subtxt{position:absolute;left:50%;top:88%;transform:translate(-50%,-100%);width:max-content;max-width:86%;text-align:center;color:#fff;font:500 20px/1.3 "Helvetica Neue",Arial,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000,1px 1px 4px #000;pointer-events:none;z-index:2}
@@ -606,6 +611,54 @@ async function addExt(s,def){
   const it={name:s.label,track:t.track,ext:true,cues:cues&&cues.length?cues:null};ext.push(it);
   if(def&&!curSub)setSub(it);
 }
+
+/* sous-titres ajoutés par le spectateur (fichier .srt/.vtt ou lien), valables pour cette lecture */
+function addUserSub(label,txt){
+  txt=String(txt||'').replace(/^\uFEFF/,'').replace(/\r/g,'');
+  const cues=parseCues(txt);
+  if(!cues.length)return false;
+  const vtt=/^\s*WEBVTT/.test(txt)?txt:'WEBVTT\n\n'+txt.replace(/(\d+:\d\d:\d\d),(\d{3})/g,'$1.$2');
+  const url=URL.createObjectURL(new Blob([vtt],{type:'text/vtt'}));
+  const t=document.createElement('track');t.kind='subtitles';t.label=label;t.src=url;
+  v.appendChild(t);t.track.mode='disabled';
+  const it={name:label,track:t.track,ext:true,cues,user:true};ext.push(it);setSub(it);
+  return true;
+}
+async function readSubFile(f){
+  const b=await f.arrayBuffer();
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(b)}catch(e){return new TextDecoder('windows-1252').decode(b)}
+}
+function addSubPanel(){
+  const c=$('#card');c.innerHTML='';
+  const d=el('div','sec addsub');d.append(el('h4','','Ajouter mes sous-titres'));
+  const lab=document.createElement('input');lab.type='text';lab.placeholder='Nom (ex. FR, EN, Français (FORCÉ))';lab.setAttribute('aria-label','Nom des sous-titres');
+  lab.onchange=()=>{lab.value=nl(lab.value.trim())};
+  const fi=document.createElement('input');fi.type='file';fi.accept='.srt,.vtt,.txt,text/vtt,application/x-subrip,text/plain';fi.hidden=true;
+  const fb=el('button','ghost','Choisir un fichier .srt ou .vtt');fb.type='button';fb.onclick=()=>fi.click();
+  const ui=document.createElement('input');ui.type='url';ui.placeholder='https://exemple.com/fr.srt';ui.setAttribute('aria-label','Lien du sous-titre');
+  const ub=el('button','ghost','Charger depuis le lien');ub.type='button';
+  const msg=el('div','msg'),ok=el('div','ok');
+  const done=(label,okk)=>{if(okk){ok.textContent='✓ « '+label+' » ajouté et activé.';msg.textContent=''}else{ok.textContent='';msg.textContent='Aucun sous-titre lisible dans ce fichier (format .srt ou .vtt attendu).'}};
+  fi.onchange=async()=>{
+    const f=fi.files[0];if(!f)return;
+    const label=nl(lab.value.trim())||f.name.replace(/\.(srt|vtt|txt)$/i,'')||'Mes sous-titres';
+    try{done(label,addUserSub(label,await readSubFile(f)))}catch(e){done(label,false)}
+    fi.value='';
+  };
+  ub.onclick=async()=>{
+    const u=ui.value.trim();if(!u)return;
+    const label=nl(lab.value.trim())||decodeURIComponent((u.split('?')[0].split('/').pop()||'').replace(/\.(srt|vtt|txt)$/i,''))||'Mes sous-titres';
+    try{
+      const r=await fetch(full(u));if(!r.ok)throw 0;
+      done(label,addUserSub(label,await r.text()));
+    }catch(e){ok.textContent='';msg.textContent="Impossible de charger ce lien (le site bloque peut-être l'accès). Télécharge le fichier puis choisis-le ci-dessus."}
+  };
+  const bk=el('button','ghost','← Retour');bk.type='button';bk.onclick=()=>openModal('cc');
+  d.append(lab,fb,fi,el('div','or','ou'),ui,ub,msg,ok,el('p','shint',"Les sous-titres ajoutés ne sont visibles que par toi, pour cette lecture."),bk);
+  c.append(d);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  $('#modal').hidden=false;
+}
 function subList(){
   const L=[];
   if(hls)hls.subtitleTracks.forEach((t,i)=>L.push({name:nl(t.name||t.lang||'Piste '+(i+1)),i}));
@@ -695,7 +748,7 @@ function secs(k){
     return[
       {t:'Audio',items:a.length>1?a.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,close:true,f:()=>setAudio(i)})):[]},
       {t:'Sous-titres',items:[{l:'Désactivés',on:!curSub,f:()=>setSub(null)}].concat(subList().map(it=>({l:it.name,on:isOn(it),f:()=>setSub(it)})))},
-      {t:'Réglages',items:[{l:'Paramètres des sous-titres…',go:'sub'}]}
+      {t:'Réglages',items:[{l:'Ajouter mes sous-titres…',go:'addsub'},{l:'Paramètres des sous-titres…',go:'sub'}]}
     ];
   }
   if(k==='speed')return[{t:'Vitesse de lecture',items:RATES.map(r=>({l:r===1?'Normale':r+'×',on:v.playbackRate===r,f:()=>{v.playbackRate=r}}))}];
@@ -705,6 +758,7 @@ function secs(k){
 function openModal(k){
   $('#modal').classList.remove('clear');subEdit=false;panelSync=null;
   if(k==='sub')return subPanel();
+  if(k==='addsub')return addSubPanel();
   const c=$('#card');c.innerHTML='';
   secs(k).forEach(s=>{
     if(!s.items.length)return;
