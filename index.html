@@ -290,6 +290,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <div id="en">
         <span class="pz1">Vous avez terminé</span>
         <span class="pz2" id="ent"></span>
+        <span class="pz3" id="enh" hidden></span>
         <div class="pbs"><button class="pbtn" id="enr"></button><button class="pbtn sec" id="enn" hidden></button></div>
       </div>
       <div id="rs" hidden><span id="rst"></span><button id="rsb" type="button">Depuis le début</button></div>
@@ -1076,6 +1077,8 @@ function showEnd(){
   pl.classList.remove('psd','idle');$('#nx').hidden=true;
   $('#ent').textContent=cur.title||'Vidéo';
   $('#enr').innerHTML=svg(IC.replay)+'<span>Revoir</span>';
+  const h=$('#enh');h.hidden=hasNext()||document.body.classList.contains('embed')||!EPRE.test(cur.title||'');
+  h.textContent='Épisode suivant introuvable : ajoute-le dans « Plusieurs liens d\'un coup » (page d\'accueil) puis clique sur Générer.';
   const n=$('#enn');n.hidden=!hasNext();
   if(hasNext())n.innerHTML=svg(IC.play)+'<span>Épisode suivant</span>';
   pl.classList.add('end');
