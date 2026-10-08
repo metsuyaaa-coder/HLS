@@ -128,6 +128,8 @@ async function redis(cmds) {
   if (!r.ok) throw new Error('Redis ' + r.status);
   return (await r.json()).map(x => x.result);
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const usingTurso = () => !!(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
 const toObj = a => { const o = {}; for (let i = 0; i < (a || []).length; i += 2) o[a[i]] = a[i + 1]; return o; };
 
 // Pays du spectateur : en-tête fourni par Vercel (code ISO à 2 lettres). 'XX' = inconnu.
@@ -370,9 +372,14 @@ async function reports(request) {
 
 async function library() {
   try {
-    const [meta, plays, titles, last, secs] = (await redis([
-      ['HGETALL', 'meta'], ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'], ['HGETALL', 'secs'],
-    ])).map(toObj);
+    let meta, plays, titles, last, secs;
+    for (let i = 0; i < 4; i++) { // Upstash (ancien mode) peut répondre par à-coups avec des données vides : on réessaie
+      [meta, plays, titles, last, secs] = (await redis([
+        ['HGETALL', 'meta'], ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'], ['HGETALL', 'secs'],
+      ])).map(toObj);
+      if (usingTurso() || Object.keys(meta).length || Object.keys(plays).length || Object.keys(titles).length) break;
+      await sleep(350);
+    }
     const srcs = [...new Set([...Object.keys(meta), ...Object.keys(plays), ...Object.keys(titles)])];
     const videos = srcs.map(s => {
       let m = {};
@@ -451,7 +458,12 @@ async function backup(request) {
       for (let i = 0; i < cmds.length; i += 200) await redis(cmds.slice(i, i + 200));
       return json({ ok: true, n: Object.keys(d.meta || {}).length });
     }
-    const r = (await redis(BK.map(h => ['HGETALL', h]))).map(toObj);
+    let r = [];
+    for (let i = 0; i < 6; i++) { // idem : on réessaie tant que la réponse est vide (ancien Upstash instable)
+      r = (await redis(BK.map(h => ['HGETALL', h]))).map(toObj);
+      if (usingTurso() || r.some(o => Object.keys(o).length)) break;
+      await sleep(350);
+    }
     const data = {};
     BK.forEach((h, i) => { data[h] = r[i]; });
     return new Response(JSON.stringify({ app: 'flux', v: 1, t: Date.now(), data }), {
