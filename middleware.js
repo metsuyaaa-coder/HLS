@@ -195,7 +195,7 @@ async function folderGet(p) {
   } catch (e) { return json({ items: [] }); }
 }
 
-const KINDS = ['Pas de son', 'Sous-titres', 'Image qui saccade', 'Qualité', 'Ne démarre pas', 'Mauvais épisode', 'Autre'];
+const KINDS = ['Pas de son', 'Sous-titres', 'Image qui saccade', 'Qualité', 'Ne démarre pas', 'Mauvais épisode', 'Autre', 'Erreur auto'];
 async function reportPost(request) {
   if (request.method !== 'POST') return new Response(null, { status: 405 });
   let b = {};
@@ -206,12 +206,13 @@ async function reportPost(request) {
   const kind = KINDS.includes(b.kind) ? b.kind : 'Autre';
   const msg = String(b.msg || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 500);
   try {
-    const [ok] = await redis([['SET', 'rl:' + vid, 1, 'NX', 'EX', 15]]);
+    const auto = kind === 'Erreur auto'; // erreur détectée par le lecteur (pas de clic de l'utilisateur) : limite séparée
+    const [ok] = await redis([['SET', (auto ? 'rla:' : 'rl:') + vid, 1, 'NX', 'EX', auto ? 20 : 15]]);
     if (!ok) return json({ error: 'Trop de signalements, réessaie dans quelques secondes.' }, 429);
     const r = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), t: Date.now(), src,
       title: String(b.title || '').slice(0, 200), kind, msg,
-      pos: Math.max(0, Math.round(+b.pos || 0)), ua: String(request.headers.get('user-agent') || '').slice(0, 140),
+      pos: Math.max(0, Math.round(+b.pos || 0)), who: vid.slice(0, 6), ua: String(request.headers.get('user-agent') || '').slice(0, 140),
     };
     await redis([['LPUSH', 'reports', JSON.stringify(r)], ['LTRIM', 'reports', 0, 199]]);
     return new Response(null, { status: 204 });

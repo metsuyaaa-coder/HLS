@@ -64,7 +64,13 @@ button:hover{background:rgba(109,109,110,.45)}
 .sbox{max-height:300px;overflow:auto}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
-.rph{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:36px 0 12px}
+.tabs{display:flex;gap:8px;margin:0 0 20px;border-bottom:1px solid var(--line)}
+.tab{background:none;border-radius:8px 8px 0 0;padding:12px 18px;color:var(--mu);font-weight:600;border-bottom:3px solid transparent}
+.tab:hover{background:#ffffff0d;color:#fff}
+.tab.on{color:#fff;border-bottom-color:var(--red)}
+.tab .c{display:inline-block;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;font-size:12px;margin-left:6px}
+.pane[hidden]{display:none}
+.rph{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}
 .rph h2{margin:0;font-size:24px}
 .rp{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:6px;margin-bottom:8px}
 .rp .h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -80,13 +86,18 @@ button:hover{background:rgba(109,109,110,.45)}
 <header><a class="logo" href="/">FLUX</a><a href="/" style="color:var(--mu)">← Retour au générateur</a><a href="/library.html" style="color:var(--mu)">📚 Bibliothèque</a></header>
 <div class="wrap">
   <h1>Statistiques</h1>
-  <p class="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif). « En direct » = lecture en cours à l'instant (actualisé toutes les 10 s). Le temps regardé compte les minutes réellement lues (sans les sauts) et n'existe que depuis cette mise à jour. Clique sur une vidéo pour voir le détail.</p>
+  <p class="lead" id="lead">Une vue = au moins 5 secondes de lecture. « Spectateurs » compte des navigateurs différents (approximatif). « En direct » = lecture en cours à l'instant (actualisé toutes les 10 s). Le temps regardé compte les minutes réellement lues (sans les sauts) et n'existe que depuis cette mise à jour. Clique sur une vidéo pour voir le détail.</p>
+  <div class="tabs" role="tablist"><button class="tab on" id="tbS" role="tab" aria-selected="true">📊 Statistiques</button><button class="tab" id="tbR" role="tab" aria-selected="false">⚠️ Signalements<span class="c" id="rcn" hidden></span></button></div>
+  <div class="pane" id="paneS">
   <div class="tot"><div><b id="tt">–</b><span>temps total regardé</span></div><div><b id="tl"><i class="dot off" id="ld"></i><span id="tln" style="font-size:inherit;color:inherit">–</span></b><span>en direct maintenant</span></div><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
   <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
   <div class="msg" id="msg"></div>
   <div class="list" id="list"></div>
+  </div>
+  <div class="pane" id="paneR" hidden>
   <div class="rph"><h2>⚠️ Signalements</h2><button id="rpc" hidden>Tout effacer</button></div>
   <div id="rpl"></div>
+  </div>
   <div class="ov" id="ov" hidden><div class="pn" role="dialog" aria-modal="true" aria-labelledby="pt">
     <button class="x" id="px" aria-label="Fermer">✕</button>
     <h2 id="pt"></h2><div class="src" id="ps"></div><div class="lvb" id="pl"></div>
@@ -132,21 +143,29 @@ async function load(){
 async function loadReports(){
   try{
     const r=await fetch('/api/reports',{cache:'no-store'}),j=await r.json();if(!r.ok)throw 0;
-    const box=$('#rpl'),it=j.items||[];box.innerHTML='';$('#rpc').hidden=!it.length;
+    const box=$('#rpl'),it=j.items||[];box.innerHTML='';$('#rpc').hidden=!it.length;$('#rcn').textContent=it.length;$('#rcn').hidden=!it.length;
     if(!it.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Aucun signalement.';box.append(e);return}
     it.forEach(x=>{
       const c=document.createElement('div'),h=document.createElement('div'),k=document.createElement('span'),t=document.createElement('span'),a=document.createElement('span'),d=document.createElement('button');
       c.className='rp';h.className='h';k.className='k';k.textContent=x.kind;t.className='t';t.textContent=x.title||'Sans titre';
-      a.style.color='var(--mu)';a.textContent=ago(x.t)+(x.pos?' · à '+Math.floor(x.pos/60)+':'+String(x.pos%60).padStart(2,'0'):'');
+      a.style.color='var(--mu)';a.textContent=(x.who?'#'+x.who+' · ':'')+ago(x.t)+(x.pos?' · à '+Math.floor(x.pos/60)+':'+String(x.pos%60).padStart(2,'0'):'');
       d.className='d';d.textContent='Supprimer';d.onclick=async()=>{await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({del:x.id})});loadReports()};
       h.append(k,t,a,d);c.append(h);
       if(x.msg){const m=document.createElement('div');m.className='m';m.textContent=x.msg;c.append(m)}
-      const sm=document.createElement('small');sm.textContent=x.src;c.append(sm);
+      const sm=document.createElement('small');sm.textContent=(x.who?'#'+x.who+'  ·  ':'')+x.src;c.append(sm);
       box.append(c);
     });
   }catch(e){$('#rpl').textContent='Impossible de charger les signalements.'}
 }
 $('#rpc').onclick=async()=>{if(!confirm('Effacer tous les signalements ?'))return;await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})});loadReports()};
+function tab(r){
+  $('#paneS').hidden=r;$('#paneR').hidden=!r;
+  $('#tbS').classList.toggle('on',!r);$('#tbR').classList.toggle('on',r);
+  $('#tbS').setAttribute('aria-selected',!r);$('#tbR').setAttribute('aria-selected',r);
+  const l=$('#lead');if(l)l.hidden=r;
+  try{history.replaceState(null,'',r?'#signalements':location.pathname+location.search)}catch(e){}
+}
+$('#tbS').onclick=()=>tab(false);$('#tbR').onclick=()=>tab(true);
 let openSrc=null;
 function fillD(){
   const d=data.find(x=>x.src===openSrc);if(!d)return;
@@ -183,6 +202,7 @@ async function openD(src){
 function closeD(){openSrc=null;$('#ov').hidden=true}
 $('#px').onclick=closeD;$('#ov').onclick=e=>{if(e.target.id==='ov')closeD()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeD()});
+if(location.hash==='#signalements')tab(true);
 $('#rf').onclick=load;$('#q').oninput=show;load();setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
 </body>

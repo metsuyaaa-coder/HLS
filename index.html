@@ -959,7 +959,10 @@ function setAudio(i){
   initHls(t,i,was);
   setTimeout(()=>{switching=false},10000);
 }
-function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait','boot')}
+let lastAutoErr='';
+function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait','boot');
+  /* signalement automatique : tu vois l'erreur dans les stats sans que le spectateur ait à cliquer */
+  try{const k=(cur&&cur.src||'')+'|'+t;if(cur&&cur.src&&k!==lastAutoErr){lastAutoErr=k;fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',kind:'Erreur auto',msg:t,pos:v.currentTime||0,vid}),keepalive:true}).catch(()=>{})}}catch(e){}}
 $('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro,c.quals)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
