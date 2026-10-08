@@ -88,7 +88,16 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #spin{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px;border:4px solid #fff3;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite;pointer-events:none;opacity:0;transition:opacity .2s}
 .wait #spin{opacity:1}
 @keyframes sp{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){#spin{animation-duration:2.4s}.fb.go{animation-duration:.01s}}
+/* écran de chargement : au démarrage d'une vidéo, fond noir + logo + titre + barre rouge */
+#ldr{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .6s ease,visibility 0s .6s}
+.boot #ldr{opacity:1;visibility:visible;transition:opacity .2s}
+.boot #spin{opacity:0}
+.ldt{color:#fff;font-size:clamp(16px,3vw,26px);font-weight:500;max-width:80%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;animation:ldin 1s .25s ease-out both}
+.ldb{width:min(220px,50%);height:3px;background:#ffffff26;border-radius:2px;overflow:hidden;margin-top:12px}
+.ldb i{display:block;width:40%;height:100%;background:var(--red);border-radius:2px;animation:ldb 1.2s ease-in-out infinite}
+@keyframes ldin{from{opacity:0;transform:scale(.92) translateY(6px)}to{opacity:1;transform:none}}
+@keyframes ldb{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@media(prefers-reduced-motion:reduce){.ldt{animation:none}.ldb i{animation-duration:3s}#spin{animation-duration:2.4s}.fb.go{animation-duration:.01s}}
 #unlock{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:30px;background:#000b;border:1px solid #fff5;font-weight:700;backdrop-filter:blur(8px)}
 #unlock svg{width:22px;height:22px}
 .locked .ui{display:none}
@@ -374,6 +383,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <div id="hit"></div>
       <div class="fb l" id="fbl"></div><div class="fb r" id="fbr"></div>
       <div id="spin"></div>
+      <div id="ldr" aria-hidden="true"><div class="ldt" id="ldt"></div><div class="ldb"><i></i></div></div>
       <div id="subtxt" hidden></div>
       <div id="pz" aria-live="polite">
         <span class="pz1">Vous regardez</span>
@@ -861,6 +871,7 @@ function destroy(){
 function start(src,title,subs,queue,intro,outro,quals){
   if(cur&&wSec>=1)liveLeave();wLast=null;
   cur={src,title,subs,quals:quals||[],qi:-1,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
+  $('#ldt').textContent=title||'';pl.classList.add('boot');
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
@@ -946,7 +957,7 @@ function setAudio(i){
   initHls(t,i,was);
   setTimeout(()=>{switching=false},10000);
 }
-function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
+function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait','boot')}
 $('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro,c.quals)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
@@ -1282,6 +1293,7 @@ v.addEventListener('volumechange',vsync);
 ['timeupdate','progress','durationchange','loadedmetadata'].forEach(n=>v.addEventListener(n,tsync));
 v.addEventListener('waiting',()=>pl.classList.add('wait'));
 ['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
+['playing','canplay'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('boot')));
 v.addEventListener('loadstart',()=>pl.classList.add('wait'));
 v.addEventListener('error',()=>{if(!hls&&v.src)fail('Impossible de lire ce flux.')});
 sync();vsync();
