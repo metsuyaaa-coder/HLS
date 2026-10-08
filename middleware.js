@@ -29,6 +29,12 @@ async function redis(cmds) {
 }
 const toObj = a => { const o = {}; for (let i = 0; i < (a || []).length; i += 2) o[a[i]] = a[i + 1]; return o; };
 
+// Pays du spectateur : en-tête fourni par Vercel (code ISO à 2 lettres). 'XX' = inconnu.
+const ctry = r => {
+  const c = String(r.headers.get('x-vercel-ip-country') || r.headers.get('cf-ipcountry') || '').toUpperCase();
+  return /^[A-Z]{2}$/.test(c) ? c : 'XX';
+};
+
 const day = () => new Date().toISOString().slice(0, 10);
 const addSecs = (src, sec) => {
   const d = day();
@@ -37,6 +43,7 @@ const addSecs = (src, sec) => {
 
 async function view(request) {
   if (request.method !== 'POST') return new Response(null, { status: 405 });
+  const cc = ctry(request);
   let b = {};
   try { b = await request.json(); } catch (e) {}
   const src = String(b.src || '').slice(0, 1500);
@@ -51,6 +58,8 @@ async function view(request) {
       ['HSET', 'last', src, Date.now()],
       ['HINCRBY', 'dviews:' + day(), src, 1],
       ['EXPIRE', 'dviews:' + day(), 3456000],
+      ['HINCRBY', 'cv:' + src, cc, 1],
+      ['HINCRBY', 'cv:all', cc, 1],
     ]);
     return new Response(null, { status: 204 });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
@@ -61,6 +70,7 @@ async function view(request) {
 const LIVE_TTL = 40000;
 async function live(request) {
   if (request.method !== 'POST') return new Response(null, { status: 405 });
+  const cc = ctry(request);
   let b = {};
   try { b = await request.json(); } catch (e) {}
   const src = String(b.src || '').slice(0, 1500);
@@ -75,8 +85,9 @@ async function live(request) {
     ['HINCRBY', 'sv:' + src, sid, sec],
     ['HSETNX', 'ss:' + src, sid, Date.now() - sec * 1000],
     ['HSETNX', 'sw:' + src, sid, vid.slice(0, 6)],
+    ['HSETNX', 'sc:' + src, sid, cc],
     ['ZADD', 'sl:' + src, Date.now(), sid],
-    ['EXPIRE', 'sv:' + src, TTL], ['EXPIRE', 'ss:' + src, TTL], ['EXPIRE', 'sw:' + src, TTL], ['EXPIRE', 'sl:' + src, TTL],
+    ['EXPIRE', 'sv:' + src, TTL], ['EXPIRE', 'ss:' + src, TTL], ['EXPIRE', 'sw:' + src, TTL], ['EXPIRE', 'sc:' + src, TTL], ['EXPIRE', 'sl:' + src, TTL],
   ] : [];
   const extra = sec ? [...addSecs(src, sec), ...sess] : [];
   try {
@@ -132,7 +143,7 @@ async function metaPost(request) {
       const old = x.src, rc = [];
       const vals = await redis(['meta', 'plays', 'titles', 'last', 'secs'].map(h => ['HGET', h, old]));
       ['meta', 'plays', 'titles', 'last', 'secs'].forEach((h, i) => { if (vals[i] != null) rc.push(['HSET', h, ns, vals[i]], ['HDEL', h, old]); });
-      ['uniq:', 'sv:', 'ss:', 'sw:', 'sl:'].forEach(k => rc.push(['RENAME', k + old, k + ns]));
+      ['uniq:', 'sv:', 'ss:', 'sw:', 'sc:', 'sl:', 'cv:'].forEach(k => rc.push(['RENAME', k + old, k + ns]));
       let om = {};
       try { om = vals[0] ? JSON.parse(vals[0]) : {}; } catch (e) {}
       if (om.f) rc.push(['SREM', fkey(om.f), old], ['SADD', fkey(om.f), ns]);
@@ -283,23 +294,24 @@ async function stats(only) {
         days.push(d);
         cmds.push(['HGET', 'dsecs:' + d, only], ['HGET', 'dviews:' + d, only]);
       }
+      cmds.push(['HGETALL', 'cv:' + only]);
       cmds.push(['ZREVRANGE', 'sl:' + only, 0, 99, 'WITHSCORES']);
       const r = await redis(cmds);
-      const sl = r[r.length - 1] || [], ids = [], lasts = [];
+      const sl = r[r.length - 1] || [], countries = toObj(r[r.length - 2]), ids = [], lasts = [];
       for (let i = 0; i < sl.length; i += 2) { ids.push(sl[i]); lasts.push(+sl[i + 1]); }
       let sessions = [];
       if (ids.length) {
-        const [sv, ss, sw] = await redis([['HMGET', 'sv:' + only, ...ids], ['HMGET', 'ss:' + only, ...ids], ['HMGET', 'sw:' + only, ...ids]]);
-        sessions = ids.map((id, i) => ({ id, secs: +sv[i] || 0, start: +ss[i] || 0, last: lasts[i], who: sw[i] || '' }));
+        const [sv, ss, sw, sc] = await redis([['HMGET', 'sv:' + only, ...ids], ['HMGET', 'ss:' + only, ...ids], ['HMGET', 'sw:' + only, ...ids], ['HMGET', 'sc:' + only, ...ids]]);
+        sessions = ids.map((id, i) => ({ id, secs: +sv[i] || 0, start: +ss[i] || 0, last: lasts[i], who: sw[i] || '', c: sc[i] || '' }));
       }
-      return json({ days: days.map((d, i) => ({ d, secs: +r[i * 2] || 0, views: +r[i * 2 + 1] || 0 })).reverse(), sessions });
+      return json({ days: days.map((d, i) => ({ d, secs: +r[i * 2] || 0, views: +r[i * 2 + 1] || 0 })).reverse(), sessions, countries });
     }
     const now = Date.now();
-    const [, plays, titles, last, liveRaw, secs] = (await redis([
+    const [, plays, titles, last, liveRaw, secs, countries] = (await redis([
       ['ZREMRANGEBYSCORE', 'live', '-inf', now - LIVE_TTL],
       ['HGETALL', 'plays'], ['HGETALL', 'titles'], ['HGETALL', 'last'],
-      ['ZRANGE', 'live', 0, -1], ['HGETALL', 'secs'],
-    ])).map((x, i) => ((i >= 1 && i <= 3) || i === 5 ? toObj(x) : x));
+      ['ZRANGE', 'live', 0, -1], ['HGETALL', 'secs'], ['HGETALL', 'cv:all'],
+    ])).map((x, i) => ((i >= 1 && i <= 3) || i === 5 || i === 6 ? toObj(x) : x));
     const liveBy = {};
     let liveTotal = 0;
     for (const m of liveRaw || []) {
@@ -313,7 +325,7 @@ async function stats(only) {
       src: s, title: titles[s] || '', plays: +plays[s] || 0, viewers: uniq[i] || 0,
       last: +last[s] || 0, live: liveBy[s] || 0, secs: +secs[s] || 0,
     })).sort((a, b) => b.live - a.live || b.plays - a.plays);
-    return json({ videos, liveTotal });
+    return json({ videos, liveTotal, countries });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 

@@ -82,6 +82,14 @@ button:hover{background:rgba(109,109,110,.45)}
 .rp .m{color:#fff;white-space:pre-wrap;overflow-wrap:anywhere}
 .rp small{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
 .rp .d{margin-left:auto;padding:4px 10px;font-size:13px}
+.cty{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:22px}
+.cty h3,.pn h3.cy{font-size:15px;margin:0 0 6px;color:var(--mu);font-weight:600}
+.cr{display:grid;grid-template-columns:minmax(120px,190px) 1fr auto;gap:10px;align-items:center;padding:5px 0;font-size:14px}
+.cr .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cr .bg{height:8px;background:#333;border-radius:4px;overflow:hidden}
+.cr .bg i{display:block;height:100%;background:var(--red);border-radius:4px}
+.cr .v{font-variant-numeric:tabular-nums;color:var(--mu);font-size:13px;min-width:78px;text-align:right}
+.pn .cgm{margin-bottom:20px}
 @media(max-width:560px){.tot{grid-template-columns:1fr 1fr}.row{grid-template-columns:repeat(4,1fr);gap:8px}.row>div:first-child{grid-column:1/-1}}
 </style>
 </head>
@@ -93,6 +101,7 @@ button:hover{background:rgba(109,109,110,.45)}
   <div class="tabs" role="tablist"><button class="tab on" id="tbS" role="tab" aria-selected="true">📊 Statistiques</button><button class="tab" id="tbR" role="tab" aria-selected="false">⚠️ Signalements<span class="c" id="rcn" hidden></span></button></div>
   <div class="pane" id="paneS">
   <div class="tot"><div><b id="tt">–</b><span>temps total regardé</span></div><div><b id="tl"><i class="dot off" id="ld"></i><span id="tln" style="font-size:inherit;color:inherit">–</span></b><span>en direct maintenant</span></div><div><b id="tp">–</b><span>vues au total</span></div><div><b id="tv">–</b><span>vidéos vues</span></div></div>
+  <div class="cty"><h3>🌍 Pays des spectateurs <span style="font-weight:400">(en nombre de vues)</span></h3><div id="cg"></div></div>
   <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
   <div class="msg" id="msg"></div>
   <div class="list" id="list"></div>
@@ -105,6 +114,7 @@ button:hover{background:rgba(109,109,110,.45)}
     <button class="x" id="px" aria-label="Fermer">✕</button>
     <h2 id="pt"></h2><div class="src" id="ps"></div><div class="lvb" id="pl"></div>
     <div class="kp" id="pk"></div>
+    <h3 class="cy">🌍 Pays des vues</h3><div class="cgm" id="pcy"></div>
     <h3>14 derniers jours : minutes regardées par jour</h3>
     <div class="ch" id="pc"></div><div class="cl" id="pd"></div>
     <div class="sl"><h3 id="pvh">Dernières vues</h3><div class="srt" id="psr"><button type="button" data-m="recent">Plus récents</button><button type="button" data-m="long">Plus longtemps → moins</button></div><div class="sbox" id="pv"></div></div>
@@ -116,6 +126,22 @@ let data=[];
 const dur=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60);if(m<60)return m+' min';const h=Math.floor(m/60),r=m%60;return h+' h'+(r?' '+String(r).padStart(2,'0')+' min':'')};
 const dur2=s=>{s=Math.round(s||0);if(s<60)return s+' s';const m=Math.floor(s/60),r=s%60;if(m<60)return m+' min'+(r?' '+String(r).padStart(2,'0')+' s':'');return dur(s)};
 const ago=t=>{if(!t)return'';const s=(Date.now()-t)/1000;if(s<60)return"à l'instant";if(s<3600)return'il y a '+Math.floor(s/60)+' min';if(s<86400)return'il y a '+Math.floor(s/3600)+' h';return'il y a '+Math.floor(s/86400)+' j'};
+let RN=null;try{RN=new Intl.DisplayNames(['fr'],{type:'region'})}catch(e){}
+const okC=c=>/^[A-Z]{2}$/.test(c||'')&&c!=='XX';
+const flag=c=>okC(c)?String.fromCodePoint(...[...c].map(ch=>127397+ch.charCodeAt(0))):'🌐';
+const cname=c=>{if(!okC(c))return'Inconnu';try{return(RN&&RN.of(c))||c}catch(e){return c}};
+function renderC(box,o,max){
+  box.innerHTML='';
+  const L=Object.entries(o||{}).map(([c,n])=>[c,+n||0]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]);
+  if(!L.length){const e=document.createElement('div');e.className='empty';e.style.padding='10px 0';e.textContent='Pas encore de données (seules les nouvelles vues ont un pays).';box.append(e);return}
+  const tot=L.reduce((a,x)=>a+x[1],0),mx=L[0][1];
+  L.slice(0,max||12).forEach(([c,n])=>{
+    const r=document.createElement('div'),a=document.createElement('div'),b=document.createElement('div'),i=document.createElement('i'),v=document.createElement('div');
+    r.className='cr';a.className='nm';a.textContent=flag(c)+' '+cname(c);b.className='bg';i.style.width=Math.max(2,Math.round(n/mx*100))+'%';b.append(i);
+    v.className='v';v.textContent=n+' · '+Math.round(n/tot*100)+' %';r.append(a,b,v);box.append(r);
+  });
+  if(L.length>(max||12)){const e=document.createElement('div');e.style.cssText='color:var(--mu);font-size:12px;margin-top:4px';e.textContent='+ '+(L.length-(max||12))+' autre(s) pays';box.append(e)}
+}
 function show(){
   const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
   const rows=data.filter(d=>!q||(d.title+' '+d.src).toLowerCase().includes(q));
@@ -140,7 +166,7 @@ async function load(){
     $('#tp').textContent=data.reduce((a,d)=>a+d.plays,0);
     $('#tt').textContent=dur(data.reduce((a,d)=>a+(d.secs||0),0));
     $('#tv').textContent=data.length;
-    show();if(openSrc)fillD();loadReports();
+    renderC($('#cg'),j.countries,12);show();if(openSrc)fillD();loadReports();
   }catch(e){$('#msg').textContent='Impossible de charger les stats : '+e.message}
 }
 async function loadReports(){
@@ -184,7 +210,7 @@ function renderV(){
     const r=document.createElement('div'),a=document.createElement('div'),w=document.createElement('span'),d=document.createElement('div'),o=document.createElement('div');
     r.className='sr';
     a.textContent=new Date(g.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-    w.className='w';w.textContent=(g.who?' #'+g.who:' (inconnu)')+(g.n>1?' · '+g.n+' visionnages':'');a.append(w);
+    w.className='w';w.textContent=(g.who?' #'+g.who:' (inconnu)')+(okC(g.c)?' · '+flag(g.c)+' '+cname(g.c):'')+(g.n>1?' · '+g.n+' visionnages':'');a.append(w);
     d.className='d';d.textContent=dur2(g.secs);
     o.className='on';o.textContent=Date.now()-g.last<45000?'● en cours':'';
     r.append(a,o,d);box.append(r);
@@ -202,10 +228,11 @@ function fillD(){
 }
 async function openD(src){
   openSrc=src;fillD();$('#ov').hidden=false;$('#px').focus();
-  $('#pc').innerHTML='';$('#pd').innerHTML='';$('#pv').innerHTML='';
+  $('#pc').innerHTML='';$('#pd').innerHTML='';$('#pv').innerHTML='';$('#pcy').innerHTML='';
   try{
     const r=await fetch('/api/stats?src='+encodeURIComponent(src),{cache:'no-store'});const j=await r.json();
     if(!r.ok)throw 0;if(openSrc!==src)return;
+    renderC($('#pcy'),j.countries,8);
     const mx=Math.max(1,...j.days.map(x=>x.secs));
     $('#pc').innerHTML=j.days.map(x=>'<div title="'+x.d+' : '+dur(x.secs)+' · '+x.views+' vue(s)"><i class="'+(x.secs?'':'z')+'" style="height:'+Math.max(2,Math.round(x.secs/mx*100))+'%"></i></div>').join('');
     $('#pd').innerHTML=j.days.map(x=>'<span>'+x.d.slice(8)+'</span>').join('');
@@ -215,7 +242,8 @@ async function openD(src){
     S.forEach(x=>{
       const key=x.who||('?'+x.id);
       let g=G.get(key);
-      if(!g){g={who:x.who||'',secs:0,n:0,last:0,first:Infinity};G.set(key,g)}
+      if(!g){g={who:x.who||'',secs:0,n:0,last:0,first:Infinity,c:''};G.set(key,g)}
+      if(okC(x.c))g.c=x.c;
       g.secs+=x.secs||0;g.n++;
       g.last=Math.max(g.last,x.last||0);g.first=Math.min(g.first,x.start||x.last||Infinity);
     });
