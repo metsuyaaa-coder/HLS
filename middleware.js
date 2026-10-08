@@ -3,7 +3,7 @@
 // /api/meta (GET) est public : le lecteur y lit l'intro / le générique / le titre enregistrés dans la bibliothèque.
 // /api/folder (GET) est public : le lecteur y lit la liste des épisodes d'un dossier. /api/report (POST) est public : bouton "Signaler un problème".
 // Protégés par SITE_PASSWORD : la page d'accueil, /stats.html, /library.html, /api/stats, /api/library et l'écriture sur /api/meta, /api/reports (lecture des signalements).
-export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library', '/api/folder', '/api/report', '/api/reports', '/api/backup'] };
+export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library', '/api/folder', '/api/report', '/api/reports', '/api/backup', '/api/health'] };
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -460,6 +460,16 @@ async function backup(request) {
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
+
+// Diagnostic : quel stockage est utilisé, et répond-il ?
+async function health() {
+  const mode = process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN ? 'Turso'
+    : (process.env.UPSTASH_KV_REST_API_URL || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL) ? 'Upstash (ancien mode)' : 'aucun';
+  const t = Date.now();
+  try { await redis([['ECHO', 'ok']]); return json({ mode, ok: true, ms: Date.now() - t }); }
+  catch (e) { return json({ mode, ok: false, error: String(e.message || e) }); }
+}
+
 export default async function middleware(request) {
   const u = new URL(request.url), p = u.searchParams;
   if (u.pathname === '/api/view') return view(request);
@@ -484,6 +494,7 @@ export default async function middleware(request) {
   if (u.pathname === '/api/library') return library();
   if (u.pathname === '/api/reports') return reports(request);
   if (u.pathname === '/api/backup') return backup(request);
+  if (u.pathname === '/api/health') return health();
   if (u.pathname === '/api/meta') return metaPost(request);
   return new Response(null, { headers: { 'x-middleware-next': '1' } });
 }

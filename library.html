@@ -72,6 +72,7 @@ details.add summary{cursor:pointer;font-weight:600}
   <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><select id="fsel" aria-label="Dossier"><option value="">Tous les dossiers</option></select><button id="rf" type="button">Actualiser</button></div>
   <div class="msg" id="msg" role="alert"></div>
   <p class="cnt" id="cnt"></p>
+  <p class="cnt" id="dbs" style="opacity:.55"></p>
   <div class="list" id="list"></div>
 </div>
 <script>
@@ -234,16 +235,23 @@ function show(){
   if(!rows.length){const e=document.createElement('div');e.className='empty';e.textContent=data.length?'Aucun résultat.':'Aucune vidéo pour le moment. Génère un lien depuis la page d\'accueil ou ajoute une vidéo ci-dessus.';box.append(e);return}
   rows.forEach(v=>box.append(card(v)));
 }
+async function fetchLib(){
+  const r=await fetch('/api/library',{cache:'no-store'});
+  if(!(r.headers.get('content-type')||'').includes('json'))throw new Error('le serveur ne répond pas comme prévu (le nouveau middleware.js est-il déployé ? code '+r.status+')');
+  const j=await r.json();
+  if(!r.ok)throw new Error(j.error||r.status);
+  return j.videos;
+}
 async function load(){
-  $('#msg').textContent='';
-  try{
-    const r=await fetch('/api/library',{cache:'no-store'});
-    if(!(r.headers.get('content-type')||'').includes('json'))throw new Error('le serveur ne répond pas comme prévu (le nouveau middleware.js est-il déployé ? code '+r.status+')');
-    const j=await r.json();
-    if(!r.ok)throw new Error(j.error||r.status);
-    data=j.videos;fillFolders();show();
-    if(!data.length)$('#cnt').textContent='Base connectée · aucune vidéo enregistrée pour le moment.';
-  }catch(e){data=[];fillFolders();show();$('#cnt').textContent='';note('Impossible de charger la bibliothèque : '+(e.message||e))}
+  $('#msg').textContent='';$('#dbs').textContent='';
+  let err=null;
+  for(let i=0;i<3;i++){ /* le serveur peut répondre par à-coups : on réessaie avant d'afficher une erreur */
+    try{data=await fetchLib();err=null;break}catch(e){err=e;await new Promise(r=>setTimeout(r,700))}
+  }
+  if(err){data=[];fillFolders();show();$('#cnt').textContent='';note('Impossible de charger la bibliothèque : '+(err.message||err))}
+  else{fillFolders();show();if(!data.length)$('#cnt').textContent='Base connectée · aucune vidéo enregistrée pour le moment.'}
+  try{const r=await fetch('/api/health',{cache:'no-store'}),h=await r.json();$('#dbs').textContent='Stockage : '+h.mode+' · '+(h.ok?'répond ('+h.ms+' ms)':'ne répond pas : '+h.error)}
+  catch(e){$('#dbs').textContent='Stockage : état inconnu (le nouveau middleware.js n\'est pas déployé)'}
 }
 /* sauvegarde / restauration : un fichier JSON qui te permet de changer de base de données sans rien perdre */
 $('#rstb').onclick=e=>{e.preventDefault();$('#rst').click()};
