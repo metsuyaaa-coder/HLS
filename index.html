@@ -295,6 +295,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Lien du flux (.m3u8)
         <input type="url" id="src" placeholder="https://exemple.com/video/master.m3u8" required autocomplete="off">
       </label>
+      <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" class="stripTok" style="width:18px;height:18px;accent-color:#e50914">Supprimer automatiquement le ?token=… des liens collés (désactivé par défaut)</label>
       <label>Titre (facultatif)
         <input type="text" id="ttlIn" placeholder="Auto : détecté depuis le lien">
       </label>
@@ -326,6 +327,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <option value="emb">Code iframe responsive</option>
         </select>
       </div>
+      <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" class="stripTok" style="width:18px;height:18px;accent-color:#e50914">Supprimer automatiquement le ?token=… des liens collés (désactivé par défaut)</label>
       <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" id="bchain" checked style="width:18px;height:18px;accent-color:#e50914">Enchaîner les épisodes : à la fin de S01E01, le lecteur lance S01E02 (même série dans la liste)</label>
       <label>Intro commune à tous les liens (facultatif)
         <input type="text" id="bintro" placeholder="ex. 0:45-1:50 : ou ajoute  intro 0:45-1:50  à la fin d'une ligne pour un seul épisode" autocomplete="off">
@@ -651,6 +653,7 @@ let batch=[];
 /* liens Flux déjà générés (…/?s=…&t=Titre&c=fr|sous-titre&e=1) : on récupère lien, titre et sous-titres */
 /* enlève ?token=… (lié à l'IP et à une date d'expiration) des liens collés */
 function stripToken(u){
+  if(!prefs.stripTok)return u;
   const i=u.search(/[?&]token=/i);if(i<0)return u;
   const m=u.slice(i).match(/^[?&]token=[^&#\s]*/i);
   let r=u.slice(0,i)+u.slice(i+m[0].length);
@@ -754,6 +757,7 @@ $('#batchGo').onclick=()=>{
 $('#bintro').onchange=$('#bouro').onchange=$('#bfold').onchange=$('#bover').onchange=()=>{if(batch.length)$('#batchGo').click()};
 $('#bkind').onchange=()=>{if(batch.length)renderBatch()};
 $('#bchain').onchange=()=>{if(batch.length)renderBatch()};
+document.querySelectorAll('.stripTok').forEach(c=>{c.checked=!!prefs.stripTok;c.onchange=()=>{savePref('stripTok',c.checked);document.querySelectorAll('.stripTok').forEach(x=>x.checked=c.checked)}});
 $('#copyAll').onclick=e=>copyText(batch.map(batchLink).join('\n'),e.currentTarget);
 $('#copyAllN').onclick=e=>copyText(batch.map(b=>(b.title||guessTitle(b.src)||'Sans titre')+' : '+batchLink(b)).join('\n'),e.currentTarget);
 $('#batchFileBtn').onclick=()=>$('#batchFile').click();
