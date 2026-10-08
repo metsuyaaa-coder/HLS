@@ -199,15 +199,25 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 /* barre de volume : 0 à 200 %, repère à 100 %, rouge quand le boost est actif */
 #vw.b2 .bt::after{content:'';position:absolute;left:0;right:0;bottom:50%;height:2px;background:#000a}
 #vw.boost #vf{background:var(--red)}
-/* panneau Épisodes + signalement */
-.eps{min-width:min(440px,72vw)}
-.epl{display:grid;gap:4px;max-height:min(58vh,430px);overflow:auto;padding-right:4px}
-.epi{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:12px 14px;border-radius:8px;color:var(--mu);font-size:16px}
-.epi:hover{background:#ffffff14;color:#fff}
-.epi.on{background:#ffffff1f;color:#fff;font-weight:700}
-.epn{min-width:26px;text-align:center;font-size:20px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
-.ept{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.epc{color:var(--red);font-size:13px;font-weight:700}
+/* panneau Épisodes (style Netflix) + signalement */
+#card.epc2{padding:0;gap:0;flex-direction:column;width:min(640px,94%);max-height:86%;background:#141414;border:0;border-radius:6px;overflow:hidden;box-shadow:0 24px 70px #000c}
+.eph{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:20px 64px 14px 24px}
+.ept2{font-size:clamp(20px,2.4vw,26px);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epcnt{color:var(--mu);font-size:15px;white-space:nowrap}
+.epl{display:block;overflow:auto;padding:0 0 10px;min-height:0;flex:1}
+.epi{display:flex;align-items:center;gap:20px;width:100%;text-align:left;padding:16px 24px;color:#d2d2d2;font-size:17px;border-bottom:1px solid #2a2a2a;border-radius:0}
+.epi:last-child{border-bottom:0}
+.epi:hover{background:#ffffff12}
+.epi.on{background:#333;color:#fff}
+.epn{min-width:34px;text-align:center;font-size:clamp(22px,2.6vw,28px);font-weight:400;color:#d2d2d2;font-variant-numeric:tabular-nums}
+.epi.on .epn{color:#fff;font-weight:700}
+.epm{flex:1;min-width:0}
+.ept{font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epnow{margin-top:4px;color:var(--mu);font-size:13px}
+.epp{height:3px;margin-top:10px;background:#5b5b5b;border-radius:2px;overflow:hidden}
+.epp i{display:block;height:100%;background:var(--red)}
+.epd{color:var(--mu);font-size:15px;white-space:nowrap}
+#card.epc2 .cx{top:14px;right:14px}
 .rpt{min-width:min(460px,72vw)}
 .rpk{display:flex;flex-wrap:wrap;gap:8px}
 .rpk .ghost.sel{background:#fff;color:#000;font-weight:700}
@@ -407,7 +417,7 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <button id="unlock" hidden><span data-i="lock"></span>Déverrouiller</button>
       <div id="toast" hidden></div>
       <div id="modal" class="modal" hidden><div class="card has-x" id="card"></div></div>
-      <div id="err" hidden><div id="errT"></div><div><button class="btn" id="retry">Réessayer</button></div></div>
+      <div id="err" hidden><div id="errT"></div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn" id="retry">Réessayer</button><button class="ghost" id="errrep" type="button">Signaler un problème</button></div></div>
     </div>
   </div>
   <div class="share">
@@ -459,7 +469,7 @@ fw:ARC+'<text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="mid
 bk:'<g transform="translate(24 0) scale(-1 1)">'+ARC+'</g><text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="middle">10</text>',
 cc:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>',
 set:'<path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>',
-eps:'<path d="M4 14h4v-4H4v4zm0 5h4v-4H4v4zM4 9h4V5H4v4zm5 5h12v-4H9v4zm0 5h12v-4H9v4zM9 5v4h12V5H9z"/>',
+eps:'<path d="M7 3h14v2H7V3zM5 6.5h14v2H5v-2zM3 10h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/>',
 flag:'<path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/>',
 ratio:'<path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>',
 pip:'<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
@@ -1060,7 +1070,7 @@ function secs(k){
   return[{t:'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())}];
 }
 function openModal(k){
-  $('#modal').classList.remove('clear');subEdit=false;panelSync=null;
+  $('#card').classList.remove('epc2');$('#modal').classList.remove('clear');subEdit=false;panelSync=null;
   if(k==='sub')return subPanel();
   if(k==='addsub')return addSubPanel();
   if(k==='eps')return epsPanel();
@@ -1362,18 +1372,22 @@ async function loadFolder(c,name){
 }
 const epList=()=>cur&&cur.ep?cur.ep:[];
 function epsPanel(){
-  const c=$('#card'),m=$('#modal'),list=epList();c.innerHTML='';
-  const d=el('div','sec eps');
-  d.append(el('h4','',cur&&cur.folder?'📁 '+cur.folder:'Épisodes'));
+  const c=$('#card'),m=$('#modal'),list=epList();c.innerHTML='';c.classList.add('epc2');
+  const hd=el('div','eph'),tt=el('div','ept2',cur&&cur.folder?cur.folder:'Épisodes'),ct=el('div','epcnt',list.length+' épisode'+(list.length>1?'s':''));
+  hd.append(tt,ct);
   const box=el('div','epl');
   list.forEach((x,i)=>{
-    const on=x.src===cur.src,b=el('button','epi'+(on?' on':''));
-    b.append(el('span','epn',String(i+1)),el('span','ept',x.title||guessTitle(x.src)||'Épisode '+(i+1)));
-    if(on)b.append(el('span','epc','En cours'));
+    const on=x.src===cur.src,b=el('button','epi'+(on?' on':'')),mid=el('div','epm');
+    const p=getPos(x.src);
+    mid.append(el('div','ept',x.title||guessTitle(x.src)||'Épisode '+(i+1)));
+    if(on){mid.append(el('div','epnow','En cours de lecture'))}
+    else if(p&&p.d>0&&p.t>10){const bar=el('div','epp'),f=el('i');f.style.width=Math.min(100,Math.round(p.t/p.d*100))+'%';bar.append(f);mid.append(bar)}
+    b.append(el('span','epn',String(i+1)),mid);
+    if(p&&p.d>0&&!on)b.append(el('span','epd',Math.max(1,Math.round(p.d/60))+' min'));
     b.onclick=()=>{if(on)return closeModal();closeModal();playItem(x,list.slice(i+1))};
     box.append(b);
   });
-  d.append(box);c.append(d);
+  c.append(hd,box);
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   m.hidden=false;
   const o=box.querySelector('.on');if(o)o.scrollIntoView({block:'center'});
@@ -1381,6 +1395,7 @@ function epsPanel(){
 $('#eb').onclick=()=>openModal('eps');
 
 const RKINDS=['Pas de son','Sous-titres','Image qui saccade','Qualité','Ne démarre pas','Mauvais épisode','Autre'];
+var rpPreset=null;
 function reportPanel(){
   const c=$('#card'),m=$('#modal');c.innerHTML='';
   const d=el('div','sec rpt');d.append(el('h4','','Signaler un problème'));
@@ -1399,11 +1414,13 @@ function reportPanel(){
     }catch(e){msg.textContent="Impossible d'envoyer le signalement. Réessaie.";send.disabled=false}
   };
   bk.onclick=closeModal;
+  if(rpPreset){kind=rpPreset.kind;ta.value=rpPreset.msg||'';[...kb.children].forEach(y=>y.classList.toggle('sel',y.textContent===kind));send.disabled=false;rpPreset=null}
   row.append(send,bk);d.append(kb,ta,msg,row);c.append(d);
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   m.hidden=false;
 }
 $('#rpb').onclick=()=>openModal('report');
+$('#errrep').onclick=()=>{rpPreset={kind:'Ne démarre pas',msg:'Erreur affichée : '+($('#errT').textContent||'')};openModal('report')};
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
@@ -1413,6 +1430,10 @@ async function loadMeta(c){
     if(!r.ok)return;
     const m=await r.json();
     if(cur!==c||!m||typeof m!=='object')return;
+    /* lien modifié dans la bibliothèque : on bascule sur le nouveau */
+    if(typeof m.r==='string'&&m.r&&m.r!==c.src){liveLeave();destroy();start(m.r,c.title,c.subs,c.q,c.intro,c.outro);return}
+    /* vidéo inconnue de la bibliothèque : on l'y enregistre (sans toucher aux liens des spectateurs d'un embed) */
+    if(!Object.keys(m).length&&!document.body.classList.contains('embed'))saveMeta([{src:c.src,title:c.title||guessTitle(c.src)}]).catch(()=>{});
     if(typeof m.i==='string'){c.intro=m.i;c.introT=introT(m.i)}
     if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
     if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}

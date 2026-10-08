@@ -101,8 +101,11 @@ async function metaGet(p) {
   const src = String(p.get('src') || '').slice(0, 1500);
   if (!okSrc(src)) return json({});
   try {
-    const [raw] = await redis([['HGET', 'meta', src]]);
-    return json(raw ? JSON.parse(raw) : {});
+    let cur = src, [al, raw] = await redis([['HGET', 'alias', cur], ['HGET', 'meta', cur]]);
+    for (let i = 0; al && i < 5; i++) { cur = al; [al, raw] = await redis([['HGET', 'alias', cur], ['HGET', 'meta', cur]]); }
+    const o = raw ? JSON.parse(raw) : {};
+    if (cur !== src) o.r = cur; // le lien a été modifié : le lecteur bascule sur le nouveau
+    return json(o);
   } catch (e) { return json({}); }
 }
 
@@ -113,6 +116,23 @@ async function metaPost(request) {
   const items = (Array.isArray(b.items) ? b.items : [b]).slice(0, 200)
     .map(x => ({ ...x, src: String((x && x.src) || '').slice(0, 1500) })).filter(x => okSrc(x.src));
   try {
+    for (const x of items) { // modification du lien d'une vidéo : tout ce qui la concerne suit, et l'ancien lien redirige
+      const ns = String(x.newSrc || '').slice(0, 1500);
+      if (x.del || !ns || ns === x.src) continue;
+      if (!okSrc(ns)) return json({ error: 'Lien invalide.' }, 400);
+      const [e1, e2] = await redis([['HEXISTS', 'meta', ns], ['HEXISTS', 'plays', ns]]);
+      if (e1 || e2) return json({ error: 'Ce lien existe déjà dans la bibliothèque.' }, 409);
+      const old = x.src, rc = [];
+      const vals = await redis(['meta', 'plays', 'titles', 'last', 'secs'].map(h => ['HGET', h, old]));
+      ['meta', 'plays', 'titles', 'last', 'secs'].forEach((h, i) => { if (vals[i] != null) rc.push(['HSET', h, ns, vals[i]], ['HDEL', h, old]); });
+      ['uniq:', 'sv:', 'ss:', 'sw:', 'sl:'].forEach(k => rc.push(['RENAME', k + old, k + ns]));
+      let om = {};
+      try { om = vals[0] ? JSON.parse(vals[0]) : {}; } catch (e) {}
+      if (om.f) rc.push(['SREM', fkey(om.f), old], ['SADD', fkey(om.f), ns]);
+      rc.push(['HDEL', 'alias', ns], ['HSET', 'alias', old, ns]);
+      await redis(rc);
+      x.src = ns;
+    }
     const del = items.filter(x => x.del).map(x => x.src);
     const upd = items.filter(x => !x.del);
     const cmds = [];

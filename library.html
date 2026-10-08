@@ -38,6 +38,8 @@ details.add summary{cursor:pointer;font-weight:600}
 .vid.dirty{border-color:#8a6d00}
 .top{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
 .src{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.srcl{display:grid;gap:5px;font-size:13px;color:var(--mu)}
+.srci{font:12px ui-monospace,Menlo,monospace!important}
 .tm{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tm label{display:grid;gap:5px;font-size:13px;color:var(--mu)}
 .meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;color:var(--mu);font-size:13px}
@@ -96,9 +98,12 @@ function card(v){
   const box=document.createElement('div');box.className='vid';
   const top=document.createElement('div');top.className='top';
   const ti=document.createElement('input');ti.type='text';ti.value=v.title||'';ti.placeholder='Sans titre';ti.setAttribute('aria-label','Titre');
-  const sv=document.createElement('button');sv.className='red';sv.textContent='Enregistrer';sv.disabled=true;
+  const sv=document.createElement('button');sv.className='red';sv.textContent='Enregistrer';sv.disabled=!!v.saved;
   top.append(ti,sv);
-  const src=document.createElement('div');src.className='src';src.textContent=v.src;
+  const src=document.createElement('label');src.className='srcl';
+  src.append('Lien de la vidéo (modifiable : les anciens liens déjà partagés suivent automatiquement)');
+  const si=document.createElement('input');si.type='text';si.value=v.src;si.autocomplete='off';si.spellcheck=false;si.className='srci';si.setAttribute('aria-label','Lien de la vidéo');
+  src.append(si);
   const tm=document.createElement('div');tm.className='tm';
   const mkf=(lab,val,ph)=>{const l=document.createElement('label'),i=document.createElement('input');i.type='text';i.value=val;i.placeholder=ph;i.autocomplete='off';l.append(lab,i);return[l,i]};
   const [li,ii]=mkf('Intro (début-fin)',rng(v.intro),'0:45-1:50');
@@ -109,6 +114,7 @@ function card(v){
   const info=()=>{
     meta.textContent='';
     if(v.saved){const b=document.createElement('span');b.className='badge';b.textContent='● Réglages enregistrés';meta.append(b)}
+    if(!v.saved){const b=document.createElement('span');b.textContent='○ Pas encore enregistrée';meta.append(b)}
     if(v.folder){const b=document.createElement('span');b.textContent='📁 '+v.folder;meta.append(b)}
     const parts=[v.plays+' vue'+(v.plays>1?'s':''),dur(v.secs)+' regardés'];
     if(v.last)parts.push('dernière vue '+ago(v.last));
@@ -126,24 +132,28 @@ function card(v){
   box.append(top,src,tm,meta,acts);
 
   /* champs modifiés seulement : on n'écrase jamais ce qu'on n'a pas touché */
-  const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro),f:v.folder||''});
-  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f;sv.disabled=!d;box.classList.toggle('dirty',d)};
-  [ti,ii,io,fi].forEach(x=>x.oninput=dirty);
+  const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro),f:v.folder||'',s:v.src});
+  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f||si.value.trim()!==o.s;sv.disabled=!d&&!!v.saved;box.classList.toggle('dirty',d)};
+  [ti,ii,io,fi,si].forEach(x=>x.oninput=dirty);
   const clear=x=>/^(aucune?|none|off|non|supprimer)$/i.test(x.trim());
   sv.onclick=async()=>{
     const o=orig(),it={src:v.src};
+    if(!v.saved){if(v.title)it.title=v.title;if(v.intro)it.intro=v.intro;if(v.outro)it.outro=v.outro;if(v.folder)it.folder=v.folder}
     let ni=v.intro,no=v.outro;
     if(ti.value.trim()!==o.t)it.title=ti.value.trim();
     if(fi.value.trim()!==o.f)it.folder=fi.value.trim();
+    if(si.value.trim()!==o.s){const x=si.value.trim();if(!/^https?:\/\//i.test(x))return note('Le lien doit commencer par http:// ou https://');it.newSrc=x}
     if(ii.value.trim()!==o.i){const x=ii.value.trim();const n=clear(x)||!x?'':normIntro(x);if(x&&!clear(x)&&!n)return note('Intro invalide : écris par exemple 0:45-1:50.');it.intro=n;ni=n}
     if(io.value.trim()!==o.o){const x=io.value.trim();const n=clear(x)||!x?'':normOutro(x);if(x&&!clear(x)&&!n)return note('Générique invalide : écris par exemple 42:10.');it.outro=n;no=n}
     sv.disabled=true;
     try{
-      const r=await post([it]);if(!r.ok)throw new Error(r.status);
+      const r=await post([it]);
+      if(!r.ok){let m='';try{m=(await r.json()).error}catch(e){}throw new Error(m||r.status)}
+      if(it.newSrc){localDrop(v.src);v.src=it.newSrc;si.value=v.src}
       if('title' in it)v.title=it.title;if('folder' in it)v.folder=it.folder;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
       ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();fillFolders();
       note('✓ « '+(v.title||'Sans titre')+' » enregistré : tous ses liens sont mis à jour.',true);
-    }catch(e){sv.disabled=false;note("Impossible d'enregistrer ("+(e.message||e)+").")}
+    }catch(e){sv.disabled=false;note(/existe déjà/.test(e.message)?e.message:"Impossible d'enregistrer ("+(e.message||e)+").")}
   };
   rm.onclick=async()=>{
     if(!confirm('Retirer les réglages enregistrés (titre, intro, générique) de cette vidéo ? Ses liens retrouveront ce qu\'ils contiennent eux-mêmes.'))return;
@@ -156,6 +166,15 @@ function card(v){
   return box;
 }
 
+const LS=k=>{try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return{}}};
+function localDrop(src){['flux-lib','flux-pos'].forEach(k=>{const m=LS(k);if(src in m){delete m[src];try{localStorage.setItem(k,JSON.stringify(m))}catch(e){}}})}
+/* ajoute les vidéos connues de ce navigateur (générées ou regardées) mais pas encore enregistrées */
+function addLocal(){
+  const have=new Set(data.map(d=>d.src)),lib=LS('flux-lib'),pos=LS('flux-pos');
+  const add=(src,t,i,o)=>{if(have.has(src)||!/^https?:\/\//i.test(src))return;have.add(src);data.push({src,title:t||'',folder:'',intro:i||null,outro:o||null,saved:false,updated:0,plays:0,secs:0,last:0})};
+  Object.keys(lib).forEach(src=>{const e=lib[src];if(typeof e==='string')add(src,e);else if(e)add(src,e.t,e.i,e.o)});
+  Object.keys(pos).forEach(src=>add(src,''));
+}
 function fillFolders(){
   const names=[...new Set(data.map(d=>d.folder).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const dl=$('#folders');dl.innerHTML='';names.forEach(n=>{const o=document.createElement('option');o.value=n;dl.append(o)});
@@ -177,7 +196,7 @@ async function load(){
   try{
     const r=await fetch('/api/library',{cache:'no-store'}),j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
-    data=j.videos;fillFolders();show();
+    data=j.videos;addLocal();fillFolders();show();
   }catch(e){note('Impossible de charger la bibliothèque : '+e.message)}
 }
 $('#nadd').onclick=async()=>{
