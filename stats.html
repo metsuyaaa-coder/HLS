@@ -186,15 +186,25 @@ async function openD(src){
     $('#pc').innerHTML=j.days.map(x=>'<div title="'+x.d+' : '+dur(x.secs)+' · '+x.views+' vue(s)"><i class="'+(x.secs?'':'z')+'" style="height:'+Math.max(2,Math.round(x.secs/mx*100))+'%"></i></div>').join('');
     $('#pd').innerHTML=j.days.map(x=>'<span>'+x.d.slice(8)+'</span>').join('');
     const box=$('#pv'),S=j.sessions||[];
-    $('#pvh').textContent='Dernières vues ('+S.length+') : durée de chaque visionnage';
-    if(!S.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Pas encore de détail (seules les nouvelles vues sont enregistrées).';box.append(e)}
+    /* regroupe les visionnages d'un même spectateur : un seul rang avec le total */
+    const G=new Map();
     S.forEach(x=>{
+      const key=x.who||('?'+x.id);
+      let g=G.get(key);
+      if(!g){g={who:x.who||'',secs:0,n:0,last:0,first:Infinity};G.set(key,g)}
+      g.secs+=x.secs||0;g.n++;
+      g.last=Math.max(g.last,x.last||0);g.first=Math.min(g.first,x.start||x.last||Infinity);
+    });
+    const L=[...G.values()].sort((a,b)=>b.last-a.last);
+    $('#pvh').textContent='Spectateurs ('+L.length+') : temps total de chacun';
+    if(!L.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Pas encore de détail (seules les nouvelles vues sont enregistrées).';box.append(e)}
+    L.forEach(g=>{
       const r=document.createElement('div'),a=document.createElement('div'),w=document.createElement('span'),d=document.createElement('div'),o=document.createElement('div');
       r.className='sr';
-      a.textContent=new Date(x.start||x.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      w.className='w';w.textContent=x.who?' #'+x.who:'';a.append(w);
-      d.className='d';d.textContent=dur2(x.secs);
-      o.className='on';o.textContent=Date.now()-x.last<45000?'● en cours':'';
+      a.textContent=new Date(g.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      w.className='w';w.textContent=(g.who?' #'+g.who:' (inconnu)')+(g.n>1?' · '+g.n+' visionnages':'');a.append(w);
+      d.className='d';d.textContent=dur2(g.secs);
+      o.className='on';o.textContent=Date.now()-g.last<45000?'● en cours':'';
       r.append(a,o,d);box.append(r);
     });
   }catch(e){$('#pc').textContent='Détail indisponible.'}
