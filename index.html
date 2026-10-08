@@ -866,12 +866,13 @@ window.addEventListener('popstate',route);
 
 /* ---------- lecture ---------- */
 function destroy(){
+  slowClear();
   if(hls){hls.destroy();hls=null}
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);pvKill();
 }
 function start(src,title,subs,queue,intro,outro,quals){
-  if(cur&&wSec>=1)liveLeave();wLast=null;
+  if(cur&&wSec>=1)liveLeave();wLast=null;slowPlayed=false;slowArm(true);
   cur={src,title,subs,quals:quals||[],qi:-1,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
   $('#ldt').textContent=title||'';pl.classList.add('boot');
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
@@ -924,6 +925,7 @@ function reloadSrc(msg){
 }
 function setQual(i){if(!cur||cur.qi===i)return;cur.qi=i;reloadSrc('Changement de qualité…');qLabel()}
 function initHls(pos,aud,play){
+  slowArm(true);
   if(hls){hls.destroy();hls=null}
   hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1});
   hls.loadSource(playUrl());hls.attachMedia(v);
@@ -962,7 +964,20 @@ function setAudio(i){
 let lastAutoErr='';
 function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait','boot');
   /* signalement automatique : tu vois l'erreur dans les stats sans que le spectateur ait à cliquer */
-  try{const k=(cur&&cur.src||'')+'|'+t;if(cur&&cur.src&&k!==lastAutoErr){lastAutoErr=k;fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',kind:'Erreur auto',msg:t,pos:v.currentTime||0,vid}),keepalive:true}).catch(()=>{})}}catch(e){}}
+  autoReport(t)}
+function autoReport(t,force){
+  try{const k=(cur&&cur.src||'')+'|'+t;if(cur&&cur.src&&(force||k!==lastAutoErr)){lastAutoErr=k;fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',kind:'Erreur auto',msg:t,pos:v.currentTime||0,vid}),keepalive:true}).catch(()=>{})}}catch(e){}}
+/* chargement trop long : si le lecteur reste en attente (démarrage ou coupure) plus de 20 s, on envoie un signalement auto, sans rien afficher au spectateur */
+const SLOW_MS=20000;let slowT=null,slowDone=false,slowPlayed=false;
+function slowClear(){clearTimeout(slowT);slowT=null}
+function slowArm(reset){if(reset){slowClear();slowDone=false}if(slowT||slowDone)return;slowT=setTimeout(slowFire,SLOW_MS)}
+function slowFire(){
+  slowT=null;
+  if(!cur||slowDone||!pl.classList.contains('wait')||!$('#err').hidden)return;
+  slowDone=true;
+  const diag=hls?(hls.levels&&hls.levels.length?'niveau '+hls.currentLevel+'/'+hls.levels.length:'manifeste non chargé'):'lecture native';
+  autoReport('⏱ Chargement trop long (+'+(SLOW_MS/1000)+' s) '+(slowPlayed?'en cours de lecture (buffering)':'au démarrage')+' · '+diag+' · readyState '+v.readyState+', réseau '+v.networkState,true);
+}
 $('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro,c.quals)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
@@ -1301,6 +1316,9 @@ v.addEventListener('waiting',()=>{pl.classList.add('wait');clearTimeout(bootT);b
 ['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
 ['playing','canplay'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('boot')));
 v.addEventListener('loadstart',()=>pl.classList.add('wait'));
+v.addEventListener('waiting',()=>slowArm());v.addEventListener('loadstart',()=>slowArm());
+['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,slowClear));
+v.addEventListener('playing',()=>{slowPlayed=true;slowDone=false});
 v.addEventListener('error',()=>{if(!hls&&v.src)fail('Impossible de lire ce flux.')});
 sync();vsync();
 /* réglages mémorisés : volume, son coupé, vitesse, luminosité */
