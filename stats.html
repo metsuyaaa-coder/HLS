@@ -62,6 +62,9 @@ button:hover{background:rgba(109,109,110,.45)}
 .sr .d{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;min-width:78px}
 .sr .on{color:#46d369;font-size:12px;font-weight:600}
 .sbox{max-height:300px;overflow:auto}
+.srt{display:flex;gap:6px;margin-bottom:8px}
+.srt button{padding:6px 12px;font-size:13px}
+.srt button.on{background:#fff;color:#000;font-weight:700}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
 .tabs{display:flex;gap:8px;margin:0 0 20px;border-bottom:1px solid var(--line)}
@@ -104,7 +107,7 @@ button:hover{background:rgba(109,109,110,.45)}
     <div class="kp" id="pk"></div>
     <h3>14 derniers jours : minutes regardées par jour</h3>
     <div class="ch" id="pc"></div><div class="cl" id="pd"></div>
-    <div class="sl"><h3 id="pvh">Dernières vues</h3><div class="sbox" id="pv"></div></div>
+    <div class="sl"><h3 id="pvh">Dernières vues</h3><div class="srt" id="psr"><button type="button" data-m="recent">Plus récents</button><button type="button" data-m="long">Plus longtemps → moins</button></div><div class="sbox" id="pv"></div></div>
   </div></div>
 </div>
 <script>
@@ -166,7 +169,23 @@ function tab(r){
   try{history.replaceState(null,'',r?'#signalements':location.pathname+location.search)}catch(e){}
 }
 $('#tbS').onclick=()=>tab(false);$('#tbR').onclick=()=>tab(true);
-let openSrc=null;
+let openSrc=null,vsort='recent',VL=[];
+function renderV(){
+  const box=$('#pv');box.innerHTML='';
+  document.querySelectorAll('#psr button').forEach(b=>b.classList.toggle('on',b.dataset.m===vsort));
+  const L=[...VL].sort(vsort==='long'?(a,b)=>b.secs-a.secs||b.last-a.last:(a,b)=>b.last-a.last);
+  if(!L.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Pas encore de détail (seules les nouvelles vues sont enregistrées).';box.append(e);return}
+  L.forEach(g=>{
+    const r=document.createElement('div'),a=document.createElement('div'),w=document.createElement('span'),d=document.createElement('div'),o=document.createElement('div');
+    r.className='sr';
+    a.textContent=new Date(g.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    w.className='w';w.textContent=(g.who?' #'+g.who:' (inconnu)')+(g.n>1?' · '+g.n+' visionnages':'');a.append(w);
+    d.className='d';d.textContent=dur2(g.secs);
+    o.className='on';o.textContent=Date.now()-g.last<45000?'● en cours':'';
+    r.append(a,o,d);box.append(r);
+  });
+}
+document.querySelectorAll('#psr button').forEach(b=>b.onclick=()=>{vsort=b.dataset.m;renderV()});
 function fillD(){
   const d=data.find(x=>x.src===openSrc);if(!d)return;
   $('#pt').textContent=d.title||'Sans titre';$('#ps').textContent=d.src;
@@ -195,18 +214,9 @@ async function openD(src){
       g.secs+=x.secs||0;g.n++;
       g.last=Math.max(g.last,x.last||0);g.first=Math.min(g.first,x.start||x.last||Infinity);
     });
-    const L=[...G.values()].sort((a,b)=>b.last-a.last);
-    $('#pvh').textContent='Spectateurs ('+L.length+') : temps total de chacun';
-    if(!L.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Pas encore de détail (seules les nouvelles vues sont enregistrées).';box.append(e)}
-    L.forEach(g=>{
-      const r=document.createElement('div'),a=document.createElement('div'),w=document.createElement('span'),d=document.createElement('div'),o=document.createElement('div');
-      r.className='sr';
-      a.textContent=new Date(g.last).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-      w.className='w';w.textContent=(g.who?' #'+g.who:' (inconnu)')+(g.n>1?' · '+g.n+' visionnages':'');a.append(w);
-      d.className='d';d.textContent=dur2(g.secs);
-      o.className='on';o.textContent=Date.now()-g.last<45000?'● en cours':'';
-      r.append(a,o,d);box.append(r);
-    });
+    VL=[...G.values()];
+    $('#pvh').textContent='Spectateurs ('+VL.length+') : temps total de chacun';
+    renderV();
   }catch(e){$('#pc').textContent='Détail indisponible.'}
 }
 function closeD(){openSrc=null;$('#ov').hidden=true}
