@@ -1131,13 +1131,14 @@ function qEditPanel(){
     cur.quals=list.map(x=>({label:x.label,url:full(x.url)}));
     cur.qi=old>=0?list.findIndex(x=>x.o===String(old)):-1;
     refreshShare();
+    if(!document.body.classList.contains('embed'))saveMeta([{src:cur.src,quals:cur.quals.map(q=>({l:q.label,u:q.url}))}]).catch(()=>{}); // enregistré dans la bibliothèque
     if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
     qbVis();qLabel();
     if(playUrl()!==prev)reloadSrc('Changement de qualité…');
     openModal('q');
   };
   const bk=el('button','ghost','← Retour');bk.type='button';bk.onclick=()=>openModal('q');
-  d.append(rows,ad,ap,el('p','shint','Chaque qualité est un lien .m3u8. Ils sont ajoutés au lien de partage et au code embed.'),bk);
+  d.append(rows,ad,ap,el('p','shint','Chaque qualité est un lien .m3u8. Ils sont ajoutés au lien de partage et au code embed, et enregistrés dans la bibliothèque (valables pour les liens déjà partagés).'),bk);
   c.append(d);
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   $('#modal').hidden=false;
@@ -1507,7 +1508,7 @@ async function loadMeta(c){
     /* lien modifié dans la bibliothèque : on bascule sur le nouveau */
     if(typeof m.r==='string'&&m.r&&m.r!==c.src){liveLeave();destroy();start(m.r,c.title,c.subs,c.q,c.intro,c.outro);return}
     /* vidéo inconnue de la bibliothèque : on l'y enregistre (sans toucher aux liens des spectateurs d'un embed) */
-    if(!Object.keys(m).length&&!document.body.classList.contains('embed'))saveMeta([{src:c.src,title:c.title||guessTitle(c.src)}]).catch(()=>{});
+    if(!Object.keys(m).length&&!document.body.classList.contains('embed'))saveMeta([Object.assign({src:c.src,title:c.title||guessTitle(c.src)},c.quals.length?{quals:c.quals.map(q=>({l:q.label,u:q.url}))}:{})]).catch(()=>{});
     if(typeof m.i==='string'){c.intro=m.i;c.introT=introT(m.i)}
     if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
     if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}
@@ -1516,6 +1517,14 @@ async function loadMeta(c){
       if(!x||!x.u||c.subs.some(y=>y.url===x.u))return;
       const sb={label:nl(x.l)||'Sous-titres',url:x.u};c.subs.push(sb);addExt(sb,c.subs.length===1);
     });
+    /* qualités enregistrées dans la bibliothèque : elles remplacent celles du lien (donc modifiables pour les liens déjà partagés) */
+    if(Array.isArray(m.q)){
+      const prev=playUrl();
+      c.quals=m.q.filter(q=>q&&q.u).map(q=>({label:nl(q.l)||'Qualité',url:q.u}));
+      if(c.qi>=c.quals.length)c.qi=-1;
+      qbVis();qLabel();
+      if(playUrl()!==prev)reloadSrc('Changement de qualité…');
+    }
     refreshShare();fillEd();skpSync();
   }catch(e){}
 }
