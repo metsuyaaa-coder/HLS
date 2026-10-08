@@ -414,7 +414,6 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <span class="mark" aria-hidden="true">M</span><div class="tt"><span id="ttl"></span><button class="ab" id="eb2" hidden><span data-i="eps"></span>Épisodes</button></div>
           <button class="ib" id="cast" hidden aria-label="Diffuser sur un appareil" data-i="cast"></button>
           <button class="ib" id="pipb" aria-label="Picture-in-picture" data-i="pip"></button>
-          <button class="ib" id="rpb" aria-label="Signaler un problème" title="Signaler un problème" data-i="flag"></button>
           <button class="ib" id="close" aria-label="Fermer" data-i="x"></button>
         </div>
         <div id="qtop"></div>
@@ -830,7 +829,7 @@ v.addEventListener('timeupdate',()=>{
 function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,sid,leave:!!leave,sec:takeSec()})}
 function liveBeat(){if(!cur||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
 function liveLeave(){clearInterval(liveI);liveI=null;if(!cur)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
-v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,15000)});
+v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,30000)});
 v.addEventListener('pause',liveLeave);v.addEventListener('ended',liveLeave);
 window.addEventListener('pagehide',liveLeave);
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
@@ -1559,7 +1558,6 @@ function reportPanel(){
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   m.hidden=false;
 }
-$('#rpb').onclick=()=>openModal('report');
 $('#errrep').onclick=()=>{rpPreset={kind:'Ne démarre pas',msg:'Erreur affichée : '+($('#errT').textContent||'')};openModal('report')};
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
