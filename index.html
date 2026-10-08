@@ -310,6 +310,11 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
         <div id="subs" style="display:grid;gap:8px"></div>
         <button type="button" class="link" id="addSub" style="margin-top:10px">Ajouter un sous-titre</button>
       </div>
+      <div>
+        <div style="font-size:14px;color:var(--mu);margin-bottom:6px">Liens de qualité (un .m3u8 par qualité, facultatif)</div>
+        <div id="quals" style="display:grid;gap:8px"></div>
+        <button type="button" class="link" id="addQual" style="margin-top:10px">Ajouter une qualité</button>
+      </div>
       <div class="msg" id="msg" role="alert"></div>
       <button class="btn" type="submit">Lancer la lecture</button>
     </form>
@@ -609,18 +614,29 @@ function addRow(l='',u=''){
 }
 addRow();
 $('#addSub').onclick=()=>addRow();
+function qRow(box,l='',u='',o=''){
+  const r=el('div','sub');if(o!=='')r.dataset.o=o;
+  const a=el('input');a.type='text';a.placeholder='1080p, 720p, HD…';a.value=l;a.setAttribute('aria-label','Nom de la qualité');
+  const b=el('input');b.type='url';b.placeholder='https://exemple.com/720/master.m3u8';b.value=u;b.setAttribute('aria-label','Lien de cette qualité');
+  const x=el('button','ghost','Retirer');x.type='button';x.onclick=()=>r.remove();
+  r.append(a,b,x);box.append(r);
+}
+qRow($('#quals'));
+$('#addQual').onclick=()=>qRow($('#quals'));
+const i_ok=u=>/^https?:\/\/[^/]+/i.test(u);
 $('#f').onsubmit=e=>{
   e.preventDefault();
   let src=$('#src').value.trim();
   src=stripToken(full(src));
   if(!/^https?:\/\//i.test(src)){$('#msg').textContent='Le lien doit commencer par http:// ou https://';return}
   const subs=[...document.querySelectorAll('#subs .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:nl(i[0].value.trim())||'Sous-titres',url:i[1].value.trim()}}).filter(s=>s.url);
+  const quals=[...document.querySelectorAll('#quals .sub')].map(r=>{const i=r.querySelectorAll('input');return{label:i[0].value.trim()||'Qualité',url:stripToken(full(i[1].value.trim()))}}).filter(x=>i_ok(x.url));
   const iv=$('#introIn').value.trim(),intro=normIntro(iv),ov=$('#outroIn').value.trim(),outro=normOutro(ov);
   if(iv&&!intro){$('#msg').textContent="Intro invalide : écris par exemple 0:45-1:50 (début-fin).";return}
   if(ov&&!outro){$('#msg').textContent="Générique invalide : écris par exemple 42:10 (début) ou 42:10-44:00.";return}
   const ft=smartName($('#ttlIn').value.trim())||guessTitle(src);
   saveMeta([Object.assign({src,title:ft},intro?{intro}:{},outro?{outro}:{})]).catch(()=>{});
-  history.pushState(null,'',mk(src,ft,subs,false,null,intro,outro));
+  history.pushState(null,'',mk(src,ft,subs,false,null,intro,outro,quals));
   route();
 };
 /* intro : "0:45-1:50" (ou 45-110) -> "45-110" */
@@ -631,10 +647,11 @@ const outroT=x=>{const m=String(x||'').match(/^(\d+)(?:-(\d+))?$/);return m?[+m[
 const introT=x=>{const m=String(x||'').match(/^(\d+)-(\d+)$/);return m?[+m[1],+m[2]]:null};
 const encQ=x=>encodeURIComponent(x).replace(/%3A/g,':').replace(/%2F/g,'/').replace(/%3F/g,'?').replace(/%3D/g,'=').replace(/%2C/g,',').replace(/%40/g,'@').replace(/%7C/g,'|').replace(/%20/g,'+');
 const noHttps=u=>u.replace(/^https:\/\//i,'');
-function mk(src,title,subs,embed,q,intro,outro){
+function mk(src,title,subs,embed,q,intro,outro,ql){
   const p=['s='+encQ(noHttps(src))];
   if(title&&title!==guessTitle(src))p.push('t='+encQ(title));
   subs.forEach(x=>p.push('c='+encQ(shortLab(x.label)+'|'+noHttps(x.url))));
+  (ql||[]).forEach(x=>p.push('k='+encQ(String(x.label||'Qualité').replace(/\|/g,'-')+'|'+noHttps(x.url))));
   if(intro)p.push('i='+intro);
   if(outro)p.push('o='+outro);
   (q||[]).forEach(x=>p.push('n='+encQ([String(x.title||'').replace(/\|/g,'-')+'|'+noHttps(x.src)].concat((x.subs||[]).map(c=>shortLab(c.label)+'|'+noHttps(c.url))).concat(x.intro?['@i='+x.intro]:[]).concat(x.outro?['@o='+x.outro]:[]).join('\n'))));
@@ -821,7 +838,8 @@ function route(){
   if(!src){document.title='Flux – Lecteur HLS';return}
   const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
   const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1)),rest=parts.slice(1),il=rest.find(l=>l.startsWith('@i=')),ol=rest.find(l=>l.startsWith('@o='));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(rest.filter(l=>!/^@[io]=/.test(l))),intro:il?normIntro(il.slice(3)):'',outro:ol?normOutro(ol.slice(3)):''}});
-  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq,normIntro(q.get('i')||''),normOutro(q.get('o')||''));
+  const quals=q.getAll('k').map(x=>{const i=x.indexOf('|');return{label:(i>0?x.slice(0,i):'')||'Qualité',url:full(i<0?x:x.slice(i+1))}}).filter(x=>x.url);
+  start(src,q.get('t')||q.get('title')||guessTitle(src),subs,nq,normIntro(q.get('i')||''),normOutro(q.get('o')||''),quals);
 }
 window.addEventListener('popstate',route);
 
@@ -831,9 +849,9 @@ function destroy(){
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);pvKill();
 }
-function start(src,title,subs,queue,intro,outro){
+function start(src,title,subs,queue,intro,outro,quals){
   if(cur&&wSec>=1)liveLeave();wLast=null;
-  cur={src,title,subs,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
+  cur={src,title,subs,quals:quals||[],qi:-1,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
@@ -849,6 +867,7 @@ function start(src,title,subs,queue,intro,outro){
     if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});
     v.src=src;v.play().catch(()=>{});
   }else fail("Ce navigateur ne sait pas lire le HLS.");
+  qbVis();qLabel();
   wake();
 }
 /* épisode suivant sans file : si le lien contient SxxExx, on teste le même lien avec l'épisode +1 (puis saison +1, épisode 1) */
@@ -871,17 +890,28 @@ async function guessNext(c){
     }catch(e){}
   }
 }
+const playUrl=()=>cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].url:cur.src;
+const qbVis=()=>{$('#qb').hidden=!cur||((!hls||hls.levels.length<2)&&!cur.quals.length&&document.body.classList.contains('embed'))};
+/* changer de qualité = relancer le flux (autre lien) à la même position */
+function reloadSrc(msg){
+  const t=v.currentTime,was=!v.paused,a=hls?hls.audioTrack:-1;
+  switching=true;pl.classList.add('wait');toast(msg);
+  if(hls)initHls(t,a,was);
+  else{v.src=playUrl();v.addEventListener('loadedmetadata',()=>{v.currentTime=t},{once:true});if(was)v.play().catch(()=>{})}
+  setTimeout(()=>{switching=false},10000);
+}
+function setQual(i){if(!cur||cur.qi===i)return;cur.qi=i;reloadSrc('Changement de qualité…');qLabel()}
 function initHls(pos,aud,play){
   if(hls){hls.destroy();hls=null}
   hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1});
-  hls.loadSource(cur.src);hls.attachMedia(v);
+  hls.loadSource(playUrl());hls.attachMedia(v);
   if(aud>=0)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{hls.audioTrack=aud});
   else if(prefs.audio)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{const k=hls.audioTracks.findIndex(t=>sameLab(t.name||t.lang||'',prefs.audio));if(k>=0&&hls.audioTrack!==k)hls.audioTrack=k});
   hls.once(Hls.Events.SUBTITLE_TRACKS_UPDATED,()=>{
     if(curSub&&curSub.i!==undefined){hls.subtitleTrack=curSub.i;hls.subtitleDisplay=false}
     else if(aud<0&&!curSub&&prefs.sub){const k=hls.subtitleTracks.findIndex(t=>sameLab(nl(t.name||t.lang||''),prefs.sub));if(k>=0)setSub({name:nl(hls.subtitleTracks[k].name||hls.subtitleTracks[k].lang||''),i:k})}
   });
-  hls.on(Hls.Events.MANIFEST_PARSED,()=>{$('#qb').hidden=hls.levels.length<2;if(play)v.play().catch(()=>{})});
+  hls.on(Hls.Events.MANIFEST_PARSED,()=>{qbVis();if(play)v.play().catch(()=>{})});
   hls.on(Hls.Events.LEVEL_SWITCHED,qLabel);
   let lastRec=0;
   hls.on(Hls.Events.ERROR,(_,d)=>{
@@ -908,7 +938,7 @@ function setAudio(i){
   setTimeout(()=>{switching=false},10000);
 }
 function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
-$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro)}};
+$('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro,c.quals)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
    donc on garde les sous-titres externes en mémoire à part */
@@ -1082,13 +1112,41 @@ function secs(k){
     ];
   }
   if(k==='speed')return[{t:'Vitesse de lecture',items:RATES.map(r=>({l:r===1?'Normale':r+'×',on:v.playbackRate===r,f:()=>{v.playbackRate=r}}))}];
-  const lv=hls?hls.levels:[];
-  return[{t:'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())}];
+  const lv=hls?hls.levels:[],out=[];
+  if(cur.quals.length)out.push({t:'Liens de qualité',items:[{l:'Lien principal',on:cur.qi<0,close:true,f:()=>setQual(-1)}].concat(cur.quals.map((x,i)=>({l:x.label,on:cur.qi===i,close:true,f:()=>setQual(i)})))});
+  if(hls&&lv.length>1)out.push({t:cur.quals.length?'Qualité automatique du flux':'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())});
+  if(!document.body.classList.contains('embed'))out.push({t:'Réglages',items:[{l:'Modifier les liens de qualité…',go:'qedit'}]});
+  return out;
+}
+function qEditPanel(){
+  const c=$('#card');c.innerHTML='';
+  const d=el('div','sec addsub');d.append(el('h4','','Liens de qualité'));
+  const rows=el('div');rows.style.cssText='display:grid;gap:8px';
+  cur.quals.forEach((x,i)=>qRow(rows,x.label,x.url,String(i)));if(!cur.quals.length)qRow(rows);
+  const ad=el('button','ghost','Ajouter une qualité');ad.type='button';ad.onclick=()=>qRow(rows);
+  const ap=el('button','ghost','Appliquer');ap.type='button';
+  ap.onclick=()=>{
+    const prev=playUrl(),old=cur.qi;
+    const list=[...rows.children].map(r=>{const i=r.querySelectorAll('input');return{label:i[0].value.trim()||'Qualité',url:i[1].value.trim(),o:r.dataset.o}}).filter(x=>x.url);
+    cur.quals=list.map(x=>({label:x.label,url:full(x.url)}));
+    cur.qi=old>=0?list.findIndex(x=>x.o===String(old)):-1;
+    refreshShare();
+    if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
+    qbVis();qLabel();
+    if(playUrl()!==prev)reloadSrc('Changement de qualité…');
+    openModal('q');
+  };
+  const bk=el('button','ghost','← Retour');bk.type='button';bk.onclick=()=>openModal('q');
+  d.append(rows,ad,ap,el('p','shint','Chaque qualité est un lien .m3u8. Ils sont ajoutés au lien de partage et au code embed.'),bk);
+  c.append(d);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  $('#modal').hidden=false;
 }
 function openModal(k){
   $('#card').classList.remove('epc2');$('#modal').classList.remove('clear');subEdit=false;panelSync=null;
   if(k==='sub')return subPanel();
   if(k==='addsub')return addSubPanel();
+  if(k==='qedit')return qEditPanel();
   if(k==='eps')return epsPanel();
   if(k==='report')return reportPanel();
   const c=$('#card');c.innerHTML='';
@@ -1111,13 +1169,13 @@ $('#cc').onclick=()=>openModal('cc');
 $('#sp').onclick=()=>openModal('speed');
 $('#qb').onclick=()=>openModal('q');
 v.addEventListener('ratechange',()=>{$('#spl').textContent='Vitesse ('+v.playbackRate+'×)'});
-function qLabel(){if(hls)$('#ql').textContent='Qualité ('+(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{}))+')'}
+function qLabel(){if(!cur)return;const n=cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].label:(hls&&hls.levels.length>1?(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{})):(cur.quals.length?'Principal':'Auto'));$('#ql').textContent='Qualité ('+n+')'}
 
 /* ---------- contrôles ---------- */
 const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
 const toggle=()=>v.paused?v.play().catch(()=>{}):v.pause();
 const seekBy=d=>{v.currentTime=Math.max(0,Math.min(v.duration||1e9,v.currentTime+d))};
-const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro),'_blank');
+const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals),'_blank');
 function fs(){
   if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return}
   if(pl.requestFullscreen&&document.fullscreenEnabled)pl.requestFullscreen().catch(openTab);
@@ -1465,8 +1523,8 @@ async function loadMeta(c){
 const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
 function refreshShare(){
   if(!cur)return;
-  const u=mk(cur.src,cur.title,cur.subs,true,qOf(cur),cur.intro,cur.outro);
-  $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro);
+  const u=mk(cur.src,cur.title,cur.subs,true,qOf(cur),cur.intro,cur.outro,cur.quals);
+  $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals);
   $('#embu').value=u;
   $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
   $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
@@ -1479,7 +1537,7 @@ function applyEd(){
   if(!(iv&&!ni))Object.assign(cur,{intro:ni,introT:introT(ni)});
   if(!(ov&&!no))Object.assign(cur,{outro:no,outroT:outroT(no)});
   refreshShare();skpSync();mkSync();
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro))}catch(e){}}
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
 }
 function markEd(inp,idx){
   const t=Math.round(v.currentTime),p=inp.value.split(/[-–—>]/).map(x=>x.trim());
