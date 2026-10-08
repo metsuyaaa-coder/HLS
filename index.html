@@ -1173,7 +1173,7 @@ function tsync(){
   $('#tm').textContent=live?'Direct':fmt(d-v.currentTime);
   if(d&&!live&&v.buffered.length)seek.style.setProperty('--b',(v.buffered.end(v.buffered.length-1)/d*100)+'%');
   mkSync();
-  const en=cur?(cur.ep?cur.ep.length:1+cur.q.length):0;
+  const en=cur&&cur.ep?cur.ep.length:0;
   if(en!==epShown){epShown=en;$('#eb').hidden=en<2}
 }
 v.addEventListener('play',sync);v.addEventListener('pause',sync);
@@ -1360,7 +1360,7 @@ async function loadFolder(c,name){
     refreshShare();
   }catch(e){}
 }
-const epList=()=>cur?(cur.ep||[cur,...cur.q]):[];
+const epList=()=>cur&&cur.ep?cur.ep:[];
 function epsPanel(){
   const c=$('#card'),m=$('#modal'),list=epList();c.innerHTML='';
   const d=el('div','sec eps');
