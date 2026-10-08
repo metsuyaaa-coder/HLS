@@ -924,10 +924,16 @@ function reloadSrc(msg){
   setTimeout(()=>{switching=false},10000);
 }
 function setQual(i){if(!cur||cur.qi===i)return;cur.qi=i;reloadSrc('Changement de qualité…');qLabel()}
+/* hls.js ne réessaie jamais les erreurs HTTP 4xx : un simple 429 (serveur qui limite le débit) coupait le film.
+   On réessaie 429/408 avec une attente croissante (2 s, 4 s, 8 s, puis 15 s max). */
+const retryOn=(cfg,n,tmo,resp,retry)=>{const c=resp&&typeof resp==='object'?resp.code:resp;return !!retry||(n<cfg.maxNumRetry&&(c===429||c===408))};
+const lPol=(ttfb,load,tmoN,errN)=>({default:{maxTimeToFirstByteMs:ttfb,maxLoadTimeMs:load,timeoutRetry:{maxNumRetry:tmoN,retryDelayMs:0,maxRetryDelayMs:0},errorRetry:{maxNumRetry:errN,retryDelayMs:2000,maxRetryDelayMs:15000,shouldRetry:retryOn}}});
 function initHls(pos,aud,play){
   slowArm(true);
   if(hls){hls.destroy();hls=null}
-  hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1});
+  const H=hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1,
+    manifestLoadPolicy:lPol(Infinity,20000,2,4),playlistLoadPolicy:lPol(10000,20000,2,6),fragLoadPolicy:lPol(10000,120000,4,10)});
+  let netRec=0;H.on(Hls.Events.FRAG_LOADED,()=>{netRec=0});
   hls.loadSource(playUrl());hls.attachMedia(v);
   if(aud>=0)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{hls.audioTrack=aud});
   else if(prefs.audio)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{const k=hls.audioTracks.findIndex(t=>sameLab(t.name||t.lang||'',prefs.audio));if(k>=0&&hls.audioTrack!==k)hls.audioTrack=k});
@@ -943,7 +949,14 @@ function initHls(pos,aud,play){
     if(!d.fatal){if(switching)toast('Erreur audio : '+d.details);return}
     if(d.type===Hls.ErrorTypes.MEDIA_ERROR){const n=Date.now();if(n-lastRec<3000)hls.swapAudioCodec();lastRec=n;hls.recoverMediaError();return}
     const code=d.response&&d.response.code;
-    const hint=code===401||code===403?'Accès refusé par le serveur du flux (lien expiré, protégé ou limité à une seule connexion).'
+    if(code===429)pvFail=true; /* on coupe aussi l'aperçu au survol, qui ajoute des requêtes sur le même serveur */
+    if(d.type===Hls.ErrorTypes.NETWORK_ERROR&&H.levels&&H.levels.length&&![401,403,404].includes(code)&&netRec<6){
+      netRec++;pl.classList.add('wait');
+      setTimeout(()=>{if(hls===H&&$('#err').hidden)H.startLoad(-1)},Math.min(3000*netRec,15000));
+      return;
+    }
+    const hint=code===429?'Le serveur du flux limite le nombre de requêtes (429) : trop de lectures en même temps ou trop rapides. Réessaie dans un instant.'
+      :code===401||code===403?'Accès refusé par le serveur du flux (lien expiré, protégé ou limité à une seule connexion).'
       :code===404?'Lien introuvable (404) : vérifie le lien .m3u8.'
       :code>=500?'Le serveur du flux a une erreur ('+code+').'
       :d.details==='manifestParsingError'?"Le fichier .m3u8 n'est pas une liste de lecture valide."
