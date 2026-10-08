@@ -55,7 +55,7 @@ details.add summary{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
-<header><a class="logo" href="/">FLUX</a><a href="/">← Générateur</a><a href="/stats.html">📊 Statistiques</a></header>
+<header><a class="logo" href="/">FLUX</a><a href="/">← Générateur</a><a href="/stats.html">📊 Statistiques</a><a href="/api/backup" download>⬇ Sauvegarde</a><a href="#" id="rstb">⬆ Restaurer</a><input type="file" id="rst" accept=".json,application/json" hidden></header>
 <div class="wrap">
   <h1>Bibliothèque</h1>
   <p class="lead">Toutes tes vidéos au même endroit. Ce que tu enregistres ici (titre, intro, générique) s'applique à <b>tous les liens</b> de la vidéo, y compris ceux déjà partagés ou intégrés ailleurs. Format des temps : <b>0:45-1:50</b> pour l'intro, <b>42:10</b> pour le début du générique. Laisse vide pour ne rien changer, écris <b>aucune</b> pour supprimer.<br>📁 <b>Dossiers</b> : mets plusieurs épisodes dans le même dossier et le panneau « Épisodes » du lecteur affichera exactement ceux-là, sur tous leurs liens.</p>
@@ -249,6 +249,18 @@ async function load(){
     data=j.videos;addLocal();fillFolders();show();
   }catch(e){note('Impossible de charger la bibliothèque : '+e.message+' (affichage des vidéos connues de ce navigateur)');data=[];addLocal();fillFolders();show()}
 }
+/* sauvegarde / restauration : un fichier JSON qui te permet de changer de base de données sans rien perdre */
+$('#rstb').onclick=e=>{e.preventDefault();$('#rst').click()};
+$('#rst').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());
+    const r=await fetch('/api/backup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:j.data||j})});
+    const o=await r.json();if(!r.ok)throw new Error(o.error||r.status);
+    note('✓ Sauvegarde restaurée ('+o.n+' vidéo'+(o.n>1?'s':'')+').',true);load();
+  }catch(err){note('Restauration impossible : '+err.message)}
+  e.target.value='';
+};
 $('#nadd').onclick=async()=>{
   const lines=$('#nsrc').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),f=$('#nfold').value.trim(),items=[];
   for(const l of lines){

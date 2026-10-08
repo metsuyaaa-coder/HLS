@@ -3,13 +3,114 @@
 // /api/meta (GET) est public : le lecteur y lit l'intro / le générique / le titre enregistrés dans la bibliothèque.
 // /api/folder (GET) est public : le lecteur y lit la liste des épisodes d'un dossier. /api/report (POST) est public : bouton "Signaler un problème".
 // Protégés par SITE_PASSWORD : la page d'accueil, /stats.html, /library.html, /api/stats, /api/library et l'écriture sur /api/meta, /api/reports (lecture des signalements).
-export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library', '/api/folder', '/api/report', '/api/reports'] };
+export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library', '/api/folder', '/api/report', '/api/reports', '/api/backup'] };
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
 });
 
+// ---------- stockage ----------
+// Au choix (variables d'environnement Vercel) :
+//  - Turso (SQLite, gratuit) : TURSO_DATABASE_URL + TURSO_AUTH_TOKEN  -> les commandes Redis ci-dessous sont traduites en SQL
+//  - Upstash Redis (ancien mode) : KV_REST_API_URL + KV_REST_API_TOKEN (ou UPSTASH_REDIS_REST_*)
+// Le reste du code ne change pas : il appelle toujours redis([[ 'HGET', ... ], ...]).
+const SCHEMA = [
+  'CREATE TABLE IF NOT EXISTS h(k TEXT NOT NULL, f TEXT NOT NULL, v TEXT, PRIMARY KEY(k,f)) WITHOUT ROWID',
+  'CREATE TABLE IF NOT EXISTS s(k TEXT NOT NULL, m TEXT NOT NULL, PRIMARY KEY(k,m)) WITHOUT ROWID',
+  'CREATE TABLE IF NOT EXISTS z(k TEXT NOT NULL, m TEXT NOT NULL, sc REAL NOT NULL, PRIMARY KEY(k,m)) WITHOUT ROWID',
+  'CREATE INDEX IF NOT EXISTS z_sc ON z(k,sc)',
+  'CREATE TABLE IF NOT EXISTS u(k TEXT NOT NULL, m TEXT NOT NULL, PRIMARY KEY(k,m)) WITHOUT ROWID',
+  'CREATE TABLE IF NOT EXISTS l(id INTEGER PRIMARY KEY AUTOINCREMENT, k TEXT NOT NULL, v TEXT NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS l_k ON l(k,id)',
+  'CREATE TABLE IF NOT EXISTS t(k TEXT PRIMARY KEY, v TEXT, at INTEGER) WITHOUT ROWID',
+  'CREATE TABLE IF NOT EXISTS x(k TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID',
+];
+const TXT = v => ({ type: 'text', value: String(v) });
+const INT = v => ({ type: 'integer', value: String(Math.trunc(+v)) });
+const FLT = v => ({ type: 'float', value: +v });
+const dv = x => (!x || x.type === 'null' ? null : x.type === 'integer' ? Number(x.value) : x.value);
+const ph = n => Array(n).fill('?').join(',');
+const rows = r => (r.rows || []).map(row => row.map(dv));
+const aff = r => r.affected_row_count || 0;
+const bound = (x, inf) => { const s = String(x).toLowerCase(); return s === '-inf' ? -1e300 : s === '+inf' || s === 'inf' ? 1e300 : +s || (inf ? 0 : 0); };
+const ZT = ['h', 's', 'z', 'u'];
+
+// Une commande Redis -> { st: [[sql, args], ...], out(résultats) } ; out reçoit le résultat de la dernière requête
+function compile(c) {
+  const op = String(c[0]).toUpperCase(), k = c[1] == null ? '' : String(c[1]);
+  switch (op) {
+    case 'HGET': return { st: [['SELECT v FROM h WHERE k=? AND f=?', [TXT(k), TXT(c[2])]]], out: r => (rows(r)[0] || [null])[0] };
+    case 'HMGET': { const fs = c.slice(2).map(String); if (!fs.length) return { st: [['SELECT 1', []]], out: () => [] };
+      return { st: [[`SELECT f,v FROM h WHERE k=? AND f IN (${ph(fs.length)})`, [TXT(k), ...fs.map(TXT)]]], out: r => { const m = new Map(rows(r)); return fs.map(f => (m.has(f) ? m.get(f) : null)); } }; }
+    case 'HGETALL': return { st: [['SELECT f,v FROM h WHERE k=?', [TXT(k)]]], out: r => rows(r).flat() };
+    case 'HSET': { const st = []; for (let i = 2; i + 1 < c.length; i += 2) st.push(['INSERT INTO h(k,f,v) VALUES(?,?,?) ON CONFLICT(k,f) DO UPDATE SET v=excluded.v', [TXT(k), TXT(c[i]), TXT(c[i + 1])]]);
+      return { st, out: () => st.length }; }
+    case 'HSETNX': return { st: [['INSERT OR IGNORE INTO h(k,f,v) VALUES(?,?,?)', [TXT(k), TXT(c[2]), TXT(c[3])]]], out: r => aff(r) };
+    case 'HINCRBY': return { st: [
+      ['INSERT INTO h(k,f,v) VALUES(?,?,?) ON CONFLICT(k,f) DO UPDATE SET v=CAST(CAST(h.v AS INTEGER)+? AS TEXT)', [TXT(k), TXT(c[2]), TXT(Math.trunc(+c[3])), INT(c[3])]],
+      ['SELECT v FROM h WHERE k=? AND f=?', [TXT(k), TXT(c[2])]]], out: r => +(rows(r)[0] || [0])[0] };
+    case 'HDEL': { const fs = c.slice(2).map(String); return { st: [[`DELETE FROM h WHERE k=? AND f IN (${ph(fs.length)})`, [TXT(k), ...fs.map(TXT)]]], out: r => aff(r) }; }
+    case 'HEXISTS': return { st: [['SELECT 1 FROM h WHERE k=? AND f=?', [TXT(k), TXT(c[2])]]], out: r => ((r.rows || []).length ? 1 : 0) };
+    case 'SADD': { const ms = c.slice(2).map(String); return { st: ms.map(m => ['INSERT OR IGNORE INTO s(k,m) VALUES(?,?)', [TXT(k), TXT(m)]]), out: () => ms.length }; }
+    case 'SREM': { const ms = c.slice(2).map(String); return { st: [[`DELETE FROM s WHERE k=? AND m IN (${ph(ms.length)})`, [TXT(k), ...ms.map(TXT)]]], out: r => aff(r) }; }
+    case 'SMEMBERS': return { st: [['SELECT m FROM s WHERE k=?', [TXT(k)]]], out: r => rows(r).map(x => x[0]) };
+    case 'PFADD': { const ms = c.slice(2).map(String); return { st: ms.map(m => ['INSERT OR IGNORE INTO u(k,m) VALUES(?,?)', [TXT(k), TXT(m)]]), out: () => 1 }; }
+    case 'PFCOUNT': return { st: [['SELECT COUNT(*) FROM u WHERE k=?', [TXT(k)]]], out: r => +(rows(r)[0] || [0])[0] };
+    case 'ZADD': { const st = []; for (let i = 2; i + 1 < c.length; i += 2) st.push(['INSERT INTO z(k,m,sc) VALUES(?,?,?) ON CONFLICT(k,m) DO UPDATE SET sc=excluded.sc', [TXT(k), TXT(c[i + 1]), FLT(c[i])]]);
+      return { st, out: () => st.length }; }
+    case 'ZREM': { const ms = c.slice(2).map(String); return { st: [[`DELETE FROM z WHERE k=? AND m IN (${ph(ms.length)})`, [TXT(k), ...ms.map(TXT)]]], out: r => aff(r) }; }
+    case 'ZREMRANGEBYSCORE': return { st: [['DELETE FROM z WHERE k=? AND sc>=? AND sc<=?', [TXT(k), FLT(bound(c[2])), FLT(bound(c[3]))]]], out: r => aff(r) };
+    case 'ZRANGE': case 'ZREVRANGE': {
+      const a = Math.max(0, parseInt(c[2], 10) || 0), b = parseInt(c[3], 10), lim = b < 0 ? -1 : Math.max(0, b - a + 1), ws = c.slice(4).some(x => String(x).toUpperCase() === 'WITHSCORES');
+      const ord = op === 'ZRANGE' ? 'ASC' : 'DESC';
+      return { st: [[`SELECT m,sc FROM z WHERE k=? ORDER BY sc ${ord}, m ${ord} LIMIT ? OFFSET ?`, [TXT(k), INT(lim), INT(a)]]],
+        out: r => rows(r).flatMap(([m, sc]) => (ws ? [m, String(sc)] : [m])) }; }
+    case 'LPUSH': return { st: c.slice(2).map(v => ['INSERT INTO l(k,v) VALUES(?,?)', [TXT(k), TXT(v)]]), out: () => 1 };
+    case 'LTRIM': { const n = Math.max(0, (parseInt(c[3], 10) || 0) + 1);
+      return { st: [['DELETE FROM l WHERE k=? AND id NOT IN (SELECT id FROM l WHERE k=? ORDER BY id DESC LIMIT ?)', [TXT(k), TXT(k), INT(n)]]], out: () => 'OK' }; }
+    case 'LRANGE': { const b = parseInt(c[3], 10), lim = b < 0 ? -1 : (b - (parseInt(c[2], 10) || 0) + 1), off = parseInt(c[2], 10) || 0;
+      return { st: [['SELECT v FROM l WHERE k=? ORDER BY id DESC LIMIT ? OFFSET ?', [TXT(k), INT(lim), INT(off)]]], out: r => rows(r).map(x => x[0]) }; }
+    case 'LREM': return { st: [['DELETE FROM l WHERE id IN (SELECT id FROM l WHERE k=? AND v=? ORDER BY id DESC LIMIT ?)', [TXT(k), TXT(c[3]), INT(Math.abs(+c[2]) || 1e9)]]], out: r => aff(r) };
+    case 'DEL': { const ks = c.slice(1).map(String); const st = [];
+      ks.forEach(x => ['h', 's', 'z', 'u', 'l', 't', 'x'].forEach(t => st.push([`DELETE FROM ${t} WHERE k=?`, [TXT(x)]]))); return { st, out: () => ks.length }; }
+    case 'SET': { const rest = c.slice(3).map(x => String(x).toUpperCase()), nx = rest.includes('NX'), ei = rest.indexOf('EX'), ex = ei >= 0 ? +c[3 + ei + 1] : 0, at = ex ? Date.now() + ex * 1000 : 9e15;
+      return { st: [['DELETE FROM t WHERE k=? AND at<?', [TXT(k), INT(Date.now())]],
+        [nx ? 'INSERT OR IGNORE INTO t(k,v,at) VALUES(?,?,?)' : 'INSERT OR REPLACE INTO t(k,v,at) VALUES(?,?,?)', [TXT(k), TXT(c[2]), INT(at)]]], out: r => (aff(r) ? 'OK' : null) }; }
+    case 'EXPIRE': return { st: [['INSERT INTO x(k,at) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET at=excluded.at', [TXT(k), INT(Date.now() + (+c[2]) * 1000)]]], out: () => 1 };
+    case 'RENAME': { const b = String(c[2]), st = [];
+      ZT.forEach(t => { st.push([`DELETE FROM ${t} WHERE k=? AND EXISTS(SELECT 1 FROM ${t} WHERE k=?)`, [TXT(b), TXT(k)]], [`UPDATE ${t} SET k=? WHERE k=?`, [TXT(b), TXT(k)]]); });
+      st.push(['DELETE FROM x WHERE k=? AND EXISTS(SELECT 1 FROM x WHERE k=?)', [TXT(b), TXT(k)]], ['UPDATE x SET k=? WHERE k=?', [TXT(b), TXT(k)]]);
+      return { st, out: () => 'OK' }; }
+    case 'ECHO': return { st: [['SELECT 1', []]], out: () => String(c[1]) };
+    default: throw new Error('Commande non gérée : ' + op);
+  }
+}
+
+let ready = false;
+async function turso(cmds) {
+  const url = String(process.env.TURSO_DATABASE_URL).replace(/^libsql:/i, 'https:').replace(/\/+$/, '');
+  const reqs = [], spans = [];
+  if (!ready) SCHEMA.forEach(sql => reqs.push({ type: 'execute', stmt: { sql } }));
+  const first = reqs.length;
+  cmds.forEach(c => { const o = compile(c); const a = reqs.length; o.st.forEach(([sql, args]) => reqs.push({ type: 'execute', stmt: { sql, args } })); spans.push({ o, last: reqs.length - 1, a, c }); });
+  if (Math.random() < 0.02) { // ménage des clés expirées (EXPIRE), de temps en temps
+    const n = Date.now();
+    ['h', 's', 'z', 'u'].forEach(t => reqs.push({ type: 'execute', stmt: { sql: `DELETE FROM ${t} WHERE k IN (SELECT k FROM x WHERE at<?)`, args: [INT(n)] } }));
+    reqs.push({ type: 'execute', stmt: { sql: 'DELETE FROM x WHERE at<?', args: [INT(n)] } }, { type: 'execute', stmt: { sql: 'DELETE FROM t WHERE at<?', args: [INT(n)] } });
+  }
+  reqs.push({ type: 'close' });
+  const r = await fetch(url + '/v2/pipeline', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + process.env.TURSO_AUTH_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: reqs }),
+  });
+  if (!r.ok) throw new Error('Turso ' + r.status);
+  const res = (await r.json()).results || [];
+  for (let i = 0; i < res.length; i++) if (res[i].type === 'error') throw new Error('Turso : ' + (res[i].error && res[i].error.message));
+  ready = true;
+  return spans.map(s => s.o.out((res[s.last] && res[s.last].response && res[s.last].response.result) || {}));
+}
+
 async function redis(cmds) {
+  if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) return turso(cmds);
   const url =
     process.env.UPSTASH_KV_REST_API_URL ||
     process.env.KV_REST_API_URL ||
@@ -18,7 +119,7 @@ async function redis(cmds) {
     process.env.UPSTASH_KV_REST_API_TOKEN ||
     process.env.KV_REST_API_TOKEN ||
     process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) throw new Error('Redis non configuré (url=' + !!url + ', token=' + !!token + ')');
+  if (!url || !token) throw new Error('Base de données non configurée (TURSO_DATABASE_URL / TURSO_AUTH_TOKEN manquants)');
   const r = await fetch(url + '/pipeline', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -36,9 +137,9 @@ const ctry = r => {
 };
 
 const day = () => new Date().toISOString().slice(0, 10);
-const addSecs = (src, sec) => {
+const addSecs = (src, sec, ex) => {
   const d = day();
-  return [['HINCRBY', 'secs', src, sec], ['HINCRBY', 'dsecs:' + d, src, sec], ['EXPIRE', 'dsecs:' + d, 3456000]];
+  return [['HINCRBY', 'secs', src, sec], ['HINCRBY', 'dsecs:' + d, src, sec], ...(ex ? [['EXPIRE', 'dsecs:' + d, 3456000]] : [])];
 };
 
 async function view(request) {
@@ -67,7 +168,7 @@ async function view(request) {
 
 // Spectateurs en direct : chaque lecteur envoie un "heartbeat" toutes les ~15 s pendant la lecture.
 // Un spectateur est compté "en direct" s'il a émis un heartbeat dans les LIVE_TTL dernières ms.
-const LIVE_TTL = 40000;
+const LIVE_TTL = 75000; // heartbeat toutes les 30 s
 async function live(request) {
   if (request.method !== 'POST') return new Response(null, { status: 405 });
   const cc = ctry(request);
@@ -81,20 +182,20 @@ async function live(request) {
   const sec = Math.max(0, Math.min(Math.round(+b.sec || 0), 600)); // secondes regardées depuis le dernier envoi
   const sid = String(b.sid || '');
   const TTL = 2592000; // 30 jours
+  const ex = Math.random() < 0.1; // les EXPIRE n'ont besoin d'être rafraîchis qu'une fois de temps en temps (économise des commandes Redis)
   const sess = sec && /^[\w-]{4,40}$/.test(sid) ? [
     ['HINCRBY', 'sv:' + src, sid, sec],
     ['HSETNX', 'ss:' + src, sid, Date.now() - sec * 1000],
     ['HSETNX', 'sw:' + src, sid, vid.slice(0, 6)],
     ['HSETNX', 'sc:' + src, sid, cc],
     ['ZADD', 'sl:' + src, Date.now(), sid],
-    ['EXPIRE', 'sv:' + src, TTL], ['EXPIRE', 'ss:' + src, TTL], ['EXPIRE', 'sw:' + src, TTL], ['EXPIRE', 'sc:' + src, TTL], ['EXPIRE', 'sl:' + src, TTL],
+    ...(ex ? [['EXPIRE', 'sv:' + src, TTL], ['EXPIRE', 'ss:' + src, TTL], ['EXPIRE', 'sw:' + src, TTL], ['EXPIRE', 'sc:' + src, TTL], ['EXPIRE', 'sl:' + src, TTL]] : []),
   ] : [];
-  const extra = sec ? [...addSecs(src, sec), ...sess] : [];
+  const extra = sec ? [...addSecs(src, sec, ex), ...sess] : [];
   try {
-    if (b.leave) await redis([['ZREM', 'live', member], ['HSET', 'titles', src, title], ...extra]);
+    if (b.leave) await redis([['ZREM', 'live', member], ...extra]);
     else await redis([
       ['ZADD', 'live', Date.now(), member],
-      ['HSET', 'titles', src, title],
       ...extra,
     ]);
     return new Response(null, { status: 204 });
@@ -329,6 +430,36 @@ async function stats(only) {
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }
 
+
+// Sauvegarde / restauration de la bibliothèque (réglages, vues, titres) : un fichier JSON, utilisable avec n'importe quelle base.
+const BK = ['meta', 'plays', 'titles', 'last', 'secs'];
+async function backup(request) {
+  try {
+    if (request.method === 'POST') {
+      let b = {};
+      try { b = await request.json(); } catch (e) {}
+      const d = b && b.data;
+      if (!d || typeof d !== 'object') return json({ error: 'Fichier invalide.' }, 400);
+      const cmds = [];
+      BK.forEach(h => {
+        const o = d[h];
+        if (!o || typeof o !== 'object') return;
+        const ents = Object.entries(o).filter(([s]) => okSrc(s));
+        for (let i = 0; i < ents.length; i += 100) cmds.push(['HSET', h, ...ents.slice(i, i + 100).flat().map(String)]);
+      });
+      Object.entries(d.meta || {}).forEach(([s, raw]) => { try { const f = JSON.parse(raw).f; if (f && okSrc(s)) cmds.push(['SADD', fkey(f), s]); } catch (e) {} });
+      for (let i = 0; i < cmds.length; i += 200) await redis(cmds.slice(i, i + 200));
+      return json({ ok: true, n: Object.keys(d.meta || {}).length });
+    }
+    const r = (await redis(BK.map(h => ['HGETALL', h]))).map(toObj);
+    const data = {};
+    BK.forEach((h, i) => { data[h] = r[i]; });
+    return new Response(JSON.stringify({ app: 'flux', v: 1, t: Date.now(), data }), {
+      headers: { 'content-type': 'application/json', 'content-disposition': 'attachment; filename="flux-sauvegarde-' + day() + '.json"', 'cache-control': 'no-store' },
+    });
+  } catch (e) { return json({ error: String(e.message || e) }, 500); }
+}
+
 export default async function middleware(request) {
   const u = new URL(request.url), p = u.searchParams;
   if (u.pathname === '/api/view') return view(request);
@@ -352,6 +483,7 @@ export default async function middleware(request) {
   if (u.pathname === '/api/stats') return stats(p.get('src'));
   if (u.pathname === '/api/library') return library();
   if (u.pathname === '/api/reports') return reports(request);
+  if (u.pathname === '/api/backup') return backup(request);
   if (u.pathname === '/api/meta') return metaPost(request);
   return new Response(null, { headers: { 'x-middleware-next': '1' } });
 }
