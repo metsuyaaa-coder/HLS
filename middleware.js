@@ -235,6 +235,23 @@ async function reports(request) {
     }
     const [raw] = await redis([['LRANGE', 'reports', 0, 199]]);
     const items = (raw || []).map(x => { try { return JSON.parse(x); } catch (e) { return null; } }).filter(Boolean);
+    // Erreurs auto : le spectateur a-t-il pu regarder ensuite ? (session de lecture du même \"who\" qui continue > 10 s après l'erreur)
+    try {
+      const autos = items.filter(x => x.kind === 'Erreur auto' && x.who);
+      const srcs = [...new Set(autos.map(x => x.src))].slice(0, 25);
+      if (srcs.length) {
+        const sl = await redis(srcs.map(sr => ['ZREVRANGE', 'sl:' + sr, 0, 199, 'WITHSCORES']));
+        const per = srcs.map((sr, i) => { const ids = [], lasts = []; const z = sl[i] || []; for (let k = 0; k < z.length; k += 2) { ids.push(z[k]); lasts.push(+z[k + 1]); } return { ids, lasts }; });
+        const det = await redis(srcs.flatMap((sr, i) => per[i].ids.length ? [['HMGET', 'sw:' + sr, ...per[i].ids], ['HMGET', 'sv:' + sr, ...per[i].ids]] : [['ECHO', 'x'], ['ECHO', 'x']]));
+        const ses = {};
+        srcs.forEach((sr, i) => { const w = det[i * 2], v = det[i * 2 + 1]; ses[sr] = per[i].ids.map((id, k) => ({ who: Array.isArray(w) ? w[k] : '', secs: Array.isArray(v) ? +v[k] || 0 : 0, last: per[i].lasts[k] })); });
+        autos.forEach(x => {
+          const mine = (ses[x.src] || []).filter(q => q.who === x.who && q.last > x.t + 10000);
+          x.fix = mine.length ? { ok: true, secs: Math.round(mine.reduce((a, q) => a + q.secs, 0)) } : { ok: false };
+          x.rep = autos.filter(y => y.who === x.who && y.src === x.src).length; // même spectateur, même vidéo : nombre d'erreurs
+        });
+      }
+    } catch (e) {}
     return json({ items });
   } catch (e) { return json({ error: String(e.message || e) }, 500); }
 }

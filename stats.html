@@ -154,6 +154,11 @@ async function loadReports(){
       a.style.color='var(--mu)';a.textContent=(x.who?'#'+x.who+' · ':'')+ago(x.t)+(x.pos?' · à '+Math.floor(x.pos/60)+':'+String(x.pos%60).padStart(2,'0'):'');
       d.className='d';d.textContent='Supprimer';d.onclick=async()=>{await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({del:x.id})});loadReports()};
       h.append(k,t,a,d);c.append(h);
+      if(x.fix){const f=document.createElement('div');f.style.cssText='font-weight:600;font-size:14px';
+        if(x.fix.ok){f.style.color='#46d369';f.textContent='✅ Passager : il a pu regarder ensuite'+(x.fix.secs?' ('+dur(x.fix.secs)+' de lecture)':'')}
+        else{f.style.color='#ffb020';f.textContent='⏳ Aucune lecture réussie depuis (peut-être bloqué, ou parti)'}
+        if(x.rep>1)f.textContent+=' · ⚠️ '+x.rep+' erreurs sur cette vidéo';
+        c.append(f)}
       if(x.msg){const m=document.createElement('div');m.className='m';m.textContent=x.msg;c.append(m)}
       const sm=document.createElement('small');sm.textContent=(x.who?'#'+x.who+'  ·  ':'')+x.src;c.append(sm);
       box.append(c);
