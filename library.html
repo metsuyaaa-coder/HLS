@@ -40,13 +40,18 @@ details.add summary{cursor:pointer;font-weight:600}
 .src{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
 .srcl{display:grid;gap:5px;font-size:13px;color:var(--mu)}
 .srci{font:12px ui-monospace,Menlo,monospace!important}
+.subs{display:grid;gap:8px}
+.subh{font-size:13px;color:var(--mu)}
+.subl{display:grid;gap:8px}
+.subr{display:grid;grid-template-columns:1fr 2fr auto;gap:8px}
+.subr button{padding:8px 12px}
 .tm{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tm label{display:grid;gap:5px;font-size:13px;color:var(--mu)}
 .meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;color:var(--mu);font-size:13px}
 .badge{color:var(--ok);font-weight:600}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
-@media(max-width:560px){.top{grid-template-columns:1fr}.tm{grid-template-columns:1fr}}
+@media(max-width:560px){.subr{grid-template-columns:1fr auto}.subr input:nth-child(2){grid-column:1/-1;order:3}.top{grid-template-columns:1fr}.tm{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -110,6 +115,24 @@ function card(v){
   const [lo,io]=mkf('Générique de fin (début, fin facultative)',rng(v.outro),'42:10');
   const [lf,fi]=mkf('📁 Dossier (les épisodes d\'un même dossier s\'affichent ensemble dans le lecteur)',v.folder||'','Aucun dossier');lf.className='fd';fi.setAttribute('list','folders');
   tm.append(li,lo,lf);
+  const sbx=document.createElement('div');sbx.className='subs';
+  const sh=document.createElement('div');sh.className='subh';sh.textContent='Sous-titres (liens .vtt ou .srt) : appliqués à tous les liens de la vidéo';
+  const sl=document.createElement('div');sl.className='subl';
+  const sa=document.createElement('button');sa.type='button';sa.textContent='+ Ajouter un sous-titre';sa.style.justifySelf='start';
+  const addRow=(l,u)=>{
+    const r=document.createElement('div');r.className='subr';
+    const a=document.createElement('input'),b=document.createElement('input'),x=document.createElement('button');
+    a.type=b.type='text';a.placeholder='Nom (ex. Français)';b.placeholder='https://exemple.com/fr.vtt';a.value=l||'';b.value=u||'';a.autocomplete=b.autocomplete='off';b.spellcheck=false;
+    x.type='button';x.textContent='✕';x.setAttribute('aria-label','Retirer ce sous-titre');
+    x.onclick=()=>{r.remove();dirty()};a.oninput=b.oninput=()=>dirty();
+    r.append(a,b,x);sl.append(r);
+  };
+  (v.subs||[]).forEach(s=>addRow(s.l,s.u));
+  sa.onclick=()=>{addRow('','');dirty()};
+  sbx.append(sh,sl,sa);
+  const subVal=()=>[...sl.children].map(r=>{const i=r.querySelectorAll('input');return[i[0].value.trim()||'Sous-titres',i[1].value.trim()]}).filter(x=>x[1]);
+  const subStr=()=>JSON.stringify(subVal());
+  const subOrig=()=>JSON.stringify((v.subs||[]).map(s=>[s.l,s.u]));
   const meta=document.createElement('div');meta.className='meta';
   const info=()=>{
     meta.textContent='';
@@ -129,11 +152,11 @@ function card(v){
   cl.onclick=()=>copy(link(v,false),cl);
   ce.onclick=()=>copy(link(v,true),ce);
   acts.append(op,cl,ce,rm);
-  box.append(top,src,tm,meta,acts);
+  box.append(top,src,tm,sbx,meta,acts);
 
   /* champs modifiés seulement : on n'écrase jamais ce qu'on n'a pas touché */
   const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro),f:v.folder||'',s:v.src});
-  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f||si.value.trim()!==o.s;sv.disabled=!d&&!!v.saved;box.classList.toggle('dirty',d)};
+  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f||si.value.trim()!==o.s||subStr()!==subOrig();sv.disabled=!d&&!!v.saved;box.classList.toggle('dirty',d)};
   [ti,ii,io,fi,si].forEach(x=>x.oninput=dirty);
   const clear=x=>/^(aucune?|none|off|non|supprimer)$/i.test(x.trim());
   sv.onclick=async()=>{
@@ -142,6 +165,7 @@ function card(v){
     let ni=v.intro,no=v.outro;
     if(ti.value.trim()!==o.t)it.title=ti.value.trim();
     if(fi.value.trim()!==o.f)it.folder=fi.value.trim();
+    if(subStr()!==subOrig()){const arr=subVal();if(arr.some(x=>!/^https?:\/\//i.test(x[1])))return note('Chaque sous-titre doit avoir un lien commençant par http:// ou https://');it.subs=arr.map(x=>({l:x[0],u:x[1]}))}
     if(si.value.trim()!==o.s){const x=si.value.trim();if(!/^https?:\/\//i.test(x))return note('Le lien doit commencer par http:// ou https://');it.newSrc=x}
     if(ii.value.trim()!==o.i){const x=ii.value.trim();const n=clear(x)||!x?'':normIntro(x);if(x&&!clear(x)&&!n)return note('Intro invalide : écris par exemple 0:45-1:50.');it.intro=n;ni=n}
     if(io.value.trim()!==o.o){const x=io.value.trim();const n=clear(x)||!x?'':normOutro(x);if(x&&!clear(x)&&!n)return note('Générique invalide : écris par exemple 42:10.');it.outro=n;no=n}
@@ -150,6 +174,7 @@ function card(v){
       const r=await post([it]);
       if(!r.ok){let m='';try{m=(await r.json()).error}catch(e){}throw new Error(m||r.status)}
       if(it.newSrc){localDrop(v.src);v.src=it.newSrc;si.value=v.src}
+      if('subs' in it)v.subs=it.subs;
       if('title' in it)v.title=it.title;if('folder' in it)v.folder=it.folder;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
       ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();fillFolders();
       note('✓ « '+(v.title||'Sans titre')+' » enregistré : tous ses liens sont mis à jour.',true);
@@ -159,7 +184,7 @@ function card(v){
     if(!confirm('Retirer les réglages enregistrés (titre, intro, générique) de cette vidéo ? Ses liens retrouveront ce qu\'ils contiennent eux-mêmes.'))return;
     try{
       const r=await post([{src:v.src,del:true}]);if(!r.ok)throw new Error(r.status);
-      v.saved=false;v.intro=null;v.outro=null;v.folder='';ii.value='';io.value='';fi.value='';rm.hidden=true;info();upd();dirty();fillFolders();
+      v.saved=false;v.intro=null;v.outro=null;v.folder='';v.subs=[];sl.textContent='';ii.value='';io.value='';fi.value='';rm.hidden=true;info();upd();dirty();fillFolders();
       note('Réglages retirés.',true);
     }catch(e){note('Impossible de retirer ('+(e.message||e)+').')}
   };

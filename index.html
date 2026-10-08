@@ -1450,6 +1450,10 @@ async function loadMeta(c){
     if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
     if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}
     if(typeof m.f==='string'&&m.f)loadFolder(c,m.f);
+    if(Array.isArray(m.c))m.c.forEach(x=>{
+      if(!x||!x.u||c.subs.some(y=>y.url===x.u))return;
+      const sb={label:nl(x.l)||'Sous-titres',url:x.u};c.subs.push(sb);addExt(sb,c.subs.length===1);
+    });
     refreshShare();fillEd();skpSync();
   }catch(e){}
 }

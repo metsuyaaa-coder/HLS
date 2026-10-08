@@ -95,6 +95,9 @@ const okSrc = s => /^https?:\/\//i.test(s) && s.length <= 1500;
 const cleanI = x => (/^\d+-\d+$/.test(x) ? x : '');
 const cleanF = x => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 60);
 const fkey = n => 'fold:' + n.toLowerCase();
+const cleanC = a => (Array.isArray(a) ? a : []).slice(0, 12)
+  .map(x => ({ l: String((x && x.l) || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 60) || 'Sous-titres', u: String((x && x.u) || '').trim().slice(0, 1500) }))
+  .filter(x => okSrc(x.u));
 const cleanO = x => (/^\d+(-\d+)?$/.test(x) ? x : '');
 
 async function metaGet(p) {
@@ -147,6 +150,7 @@ async function metaPost(request) {
         if (typeof x.title === 'string') { if (x.title.trim()) m.t = x.title.trim().slice(0, 200); else delete m.t; }
         if (typeof x.intro === 'string' && (x.intro === '' || cleanI(x.intro))) m.i = cleanI(x.intro); // valeur invalide : ignorée
         if (typeof x.outro === 'string' && (x.outro === '' || cleanO(x.outro))) m.o = cleanO(x.outro);
+        if (Array.isArray(x.subs)) { const c = cleanC(x.subs); if (c.length) m.c = c; else delete m.c; } // sous-titres de la bibliothèque
         if (typeof x.folder === 'string') { // dossier : '' = sortir du dossier
           const nf = cleanF(x.folder), of = m.f || '';
           if (nf.toLowerCase() !== of.toLowerCase() || nf !== of) {
@@ -238,7 +242,7 @@ async function library() {
       let m = {};
       try { m = meta[s] ? JSON.parse(meta[s]) : {}; } catch (e) {}
       return {
-        src: s, title: m.t || titles[s] || '', folder: m.f || '', intro: m.i === undefined ? null : m.i, outro: m.o === undefined ? null : m.o,
+        src: s, title: m.t || titles[s] || '', folder: m.f || '', subs: m.c || [], intro: m.i === undefined ? null : m.i, outro: m.o === undefined ? null : m.o,
         saved: !!meta[s], updated: m.u || 0, plays: +plays[s] || 0, secs: +secs[s] || 0, last: +last[s] || 0,
       };
     }).sort((a, b) => Math.max(b.updated, b.last) - Math.max(a.updated, a.last));
