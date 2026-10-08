@@ -62,7 +62,7 @@ details.add summary{cursor:pointer;font-weight:600}
 
   <details class="add"><summary>➕ Ajouter des vidéos</summary>
     <div class="addf">
-      <textarea id="nsrc" placeholder="Un lien par ligne. Pour donner un titre : Titre | https://exemple.com/video/master.m3u8" autocomplete="off"></textarea>
+      <textarea id="nsrc" placeholder="Un lien par ligne. Colle directement un lien Flux (…/?s=…&t=…) : titre, sous-titres, qualités, intro et générique sont repris. Ou : Titre | https://exemple.com/video/master.m3u8" autocomplete="off"></textarea>
       <input type="text" id="nfold" list="folders" placeholder="Dossier (facultatif) : ex. Ma série" autocomplete="off">
       <div><button class="red" id="nadd" type="button">Ajouter</button></div>
     </div>
@@ -261,9 +261,33 @@ $('#rst').onchange=async e=>{
   }catch(err){note('Restauration impossible : '+err.message)}
   e.target.value='';
 };
+/* lit un lien Flux (…/?s=lien&t=Titre&c=langue|sous-titre&k=qualité|lien&i=début-fin&o=début&n=épisode…) et le transforme en entrées de bibliothèque */
+const hasSch=u=>/^[a-z][a-z0-9+.-]*:\/\//i.test(u),fullU=u=>hasSch(u)?u:'https://'+u;
+function parseFlux(line){
+  const qi=line.indexOf('?');if(qi<0)return null;
+  const qs=new URLSearchParams(line.slice(qi+1).replace(/#.*$/,'')),raw=(qs.get('s')||qs.get('src')||'').trim();
+  if(!raw)return null;
+  const pair=(x,dl)=>{const i=x.indexOf('|');return i<0?{l:dl,u:fullU(x.trim())}:{l:x.slice(0,i).trim()||dl,u:fullU(x.slice(i+1).trim())}};
+  const subs=[...qs.getAll('c'),...qs.getAll('sub')].filter(x=>x.trim()).map(x=>pair(x,'Sous-titres'));
+  const quals=qs.getAll('k').filter(x=>x.trim()).map(x=>pair(x,'Qualité'));
+  const tm=v=>(v||'').trim(),i=tm(qs.get('i')),o=tm(qs.get('o'));
+  const main={src:fullU(raw)},title=tm(qs.get('t')||qs.get('title'));
+  if(title)main.title=title;if(/^\d+-\d+$/.test(i))main.intro=i;if(/^\d+(-\d+)?$/.test(o))main.outro=o;
+  if(subs.length)main.subs=subs;if(quals.length)main.quals=quals;
+  const out=[main];
+  qs.getAll('n').forEach(x=>{ /* mode lot : un épisode par paramètre n */
+    const parts=x.split('\n'),h=parts[0],j=h.indexOf('|');if(!h.trim())return;
+    const it={src:fullU((j<0?h:h.slice(j+1)).trim())},t=j>0?h.slice(0,j).trim():'';if(t)it.title=t;
+    const es=[];parts.slice(1).forEach(r=>{if(/^@i=/.test(r)){if(/^\d+-\d+$/.test(r.slice(3)))it.intro=r.slice(3)}else if(/^@o=/.test(r)){if(/^\d+(-\d+)?$/.test(r.slice(3)))it.outro=r.slice(3)}else if(r.trim())es.push(pair(r,'Sous-titres'))});
+    if(es.length)it.subs=es;out.push(it);
+  });
+  return out;
+}
 $('#nadd').onclick=async()=>{
   const lines=$('#nsrc').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),f=$('#nfold').value.trim(),items=[];
   for(const l of lines){
+    const fx=parseFlux(l); /* lien Flux déjà généré (…/?s=…&t=…&c=…) : on reprend titre, sous-titres, qualités, intro et générique */
+    if(fx){fx.forEach(it=>items.push(Object.assign(it,f?{folder:f}:{})));continue}
     const m=l.match(/^(.*?)\s*\|\s*(https?:\/\/\S+)$/i),src=m?m[2]:l,t=m?m[1].trim():'';
     if(!/^https?:\/\//i.test(src))return note('Chaque ligne doit contenir un lien commençant par http:// ou https://');
     items.push(Object.assign({src},t?{title:t}:{},f?{folder:f}:{}));
