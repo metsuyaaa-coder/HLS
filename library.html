@@ -145,7 +145,9 @@ function card(v){
   };
   (v.quals||[]).forEach(s=>addQ(s.l,s.u));
   qa.onclick=()=>{addQ('','');dirty()};
-  qbx.append(qh,ql,qa);
+  const [lm,mi]=mkf('Nom de la qualité du lien principal (affiché dans le menu Qualité du lecteur)',v.mainLabel||'','Lien principal');
+  lm.style.cssText='display:grid;gap:5px;font-size:13px;color:var(--mu)';mi.maxLength=60;
+  qbx.append(qh,lm,ql,qa);
   const qualVal=()=>[...ql.children].map(r=>{const i=r.querySelectorAll('input');return[i[0].value.trim()||'Qualité',i[1].value.trim()]}).filter(x=>x[1]);
   const qualStr=()=>JSON.stringify(qualVal());
   const qualOrig=()=>JSON.stringify((v.quals||[]).map(s=>[s.l,s.u]));
@@ -175,8 +177,8 @@ function card(v){
 
   /* champs modifiés seulement : on n'écrase jamais ce qu'on n'a pas touché */
   const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro),f:v.folder||'',s:v.src});
-  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f||si.value.trim()!==o.s||subStr()!==subOrig()||qualStr()!==qualOrig();sv.disabled=!d&&!!v.saved;box.classList.toggle('dirty',d)};
-  [ti,ii,io,fi,si].forEach(x=>x.oninput=dirty);
+  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f||si.value.trim()!==o.s||subStr()!==subOrig()||qualStr()!==qualOrig()||mi.value.trim()!==(v.mainLabel||'');sv.disabled=!d&&!!v.saved;box.classList.toggle('dirty',d)};
+  [ti,ii,io,fi,si,mi].forEach(x=>x.oninput=dirty);
   const clear=x=>/^(aucune?|none|off|non|supprimer)$/i.test(x.trim());
   sv.onclick=async()=>{
     const o=orig(),it={src:v.src};
@@ -185,6 +187,7 @@ function card(v){
     if(ti.value.trim()!==o.t)it.title=ti.value.trim();
     if(fi.value.trim()!==o.f)it.folder=fi.value.trim();
     if(subStr()!==subOrig()){const arr=subVal();if(arr.some(x=>!/^https?:\/\//i.test(x[1])))return note('Chaque sous-titre doit avoir un lien commençant par http:// ou https://');it.subs=arr.map(x=>({l:x[0],u:x[1]}))}
+    if(mi.value.trim()!==(v.mainLabel||''))it.mainLabel=mi.value.trim();
     if(qualStr()!==qualOrig()){const arr=qualVal();if(arr.some(x=>!/^https?:\/\//i.test(x[1])))return note('Chaque qualité doit avoir un lien commençant par http:// ou https://');it.quals=arr.map(x=>({l:x[0],u:x[1]}))}
     if(si.value.trim()!==o.s){const x=si.value.trim();if(!/^https?:\/\//i.test(x))return note('Le lien doit commencer par http:// ou https://');it.newSrc=x}
     if(ii.value.trim()!==o.i){const x=ii.value.trim();const n=clear(x)||!x?'':normIntro(x);if(x&&!clear(x)&&!n)return note('Intro invalide : écris par exemple 0:45-1:50.');it.intro=n;ni=n}
@@ -196,6 +199,7 @@ function card(v){
       if(it.newSrc){localDrop(v.src);v.src=it.newSrc;si.value=v.src}
       if('subs' in it)v.subs=it.subs;
       if('quals' in it)v.quals=it.quals;
+      if('mainLabel' in it)v.mainLabel=it.mainLabel;
       if('title' in it)v.title=it.title;if('folder' in it)v.folder=it.folder;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
       ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();fillFolders();
       note('✓ « '+(v.title||'Sans titre')+' » enregistré : tous ses liens sont mis à jour.',true);
@@ -205,7 +209,7 @@ function card(v){
     if(!confirm('Retirer les réglages enregistrés (titre, intro, générique) de cette vidéo ? Ses liens retrouveront ce qu\'ils contiennent eux-mêmes.'))return;
     try{
       const r=await post([{src:v.src,del:true}]);if(!r.ok)throw new Error(r.status);
-      v.saved=false;v.intro=null;v.outro=null;v.folder='';v.subs=[];sl.textContent='';v.quals=[];ql.textContent='';ii.value='';io.value='';fi.value='';rm.hidden=true;info();upd();dirty();fillFolders();
+      v.saved=false;v.intro=null;v.outro=null;v.folder='';v.subs=[];sl.textContent='';v.quals=[];ql.textContent='';v.mainLabel='';mi.value='';ii.value='';io.value='';fi.value='';rm.hidden=true;info();upd();dirty();fillFolders();
       note('Réglages retirés.',true);
     }catch(e){note('Impossible de retirer ('+(e.message||e)+').')}
   };

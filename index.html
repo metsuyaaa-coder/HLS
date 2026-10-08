@@ -1113,7 +1113,7 @@ function secs(k){
   }
   if(k==='speed')return[{t:'Vitesse de lecture',items:RATES.map(r=>({l:r===1?'Normale':r+'×',on:v.playbackRate===r,f:()=>{v.playbackRate=r}}))}];
   const lv=hls?hls.levels:[],out=[];
-  if(cur.quals.length)out.push({t:'Liens de qualité',items:[{l:'Lien principal',on:cur.qi<0,close:true,f:()=>setQual(-1)}].concat(cur.quals.map((x,i)=>({l:x.label,on:cur.qi===i,close:true,f:()=>setQual(i)})))});
+  if(cur.quals.length)out.push({t:'Liens de qualité',items:[{l:cur.ml||'Lien principal',on:cur.qi<0,close:true,f:()=>setQual(-1)}].concat(cur.quals.map((x,i)=>({l:x.label,on:cur.qi===i,close:true,f:()=>setQual(i)})))});
   if(hls&&lv.length>1)out.push({t:cur.quals.length?'Qualité automatique du flux':'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())});
   if(!document.body.classList.contains('embed'))out.push({t:'Réglages',items:[{l:'Modifier les liens de qualité…',go:'qedit'}]});
   return out;
@@ -1121,6 +1121,8 @@ function secs(k){
 function qEditPanel(){
   const c=$('#card');c.innerHTML='';
   const d=el('div','sec addsub');d.append(el('h4','','Liens de qualité'));
+  const ml=el('input');ml.type='text';ml.placeholder='Lien principal';ml.value=cur.ml||'';ml.maxLength=60;ml.setAttribute('aria-label','Nom de la qualité du lien principal');
+  const mlw=el('label','shint','Nom de la qualité du lien principal (ex. 1080p)');mlw.style.cssText='display:grid;gap:6px;margin-bottom:8px';mlw.append(ml);d.append(mlw);
   const rows=el('div');rows.style.cssText='display:grid;gap:8px';
   cur.quals.forEach((x,i)=>qRow(rows,x.label,x.url,String(i)));if(!cur.quals.length)qRow(rows);
   const ad=el('button','ghost','Ajouter une qualité');ad.type='button';ad.onclick=()=>qRow(rows);
@@ -1130,8 +1132,9 @@ function qEditPanel(){
     const list=[...rows.children].map(r=>{const i=r.querySelectorAll('input');return{label:i[0].value.trim()||'Qualité',url:i[1].value.trim(),o:r.dataset.o}}).filter(x=>x.url);
     cur.quals=list.map(x=>({label:x.label,url:full(x.url)}));
     cur.qi=old>=0?list.findIndex(x=>x.o===String(old)):-1;
+    cur.ml=ml.value.trim().slice(0,60);
     refreshShare();
-    if(!document.body.classList.contains('embed'))saveMeta([{src:cur.src,quals:cur.quals.map(q=>({l:q.label,u:q.url}))}]).catch(()=>{}); // enregistré dans la bibliothèque
+    if(!document.body.classList.contains('embed'))saveMeta([{src:cur.src,mainLabel:cur.ml||'',quals:cur.quals.map(q=>({l:q.label,u:q.url}))}]).catch(()=>{}); // enregistré dans la bibliothèque
     if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
     qbVis();qLabel();
     if(playUrl()!==prev)reloadSrc('Changement de qualité…');
@@ -1170,7 +1173,7 @@ $('#cc').onclick=()=>openModal('cc');
 $('#sp').onclick=()=>openModal('speed');
 $('#qb').onclick=()=>openModal('q');
 v.addEventListener('ratechange',()=>{$('#spl').textContent='Vitesse ('+v.playbackRate+'×)'});
-function qLabel(){if(!cur)return;const n=cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].label:(hls&&hls.levels.length>1?(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{})):(cur.quals.length?'Principal':'Auto'));$('#ql').textContent='Qualité ('+n+')'}
+function qLabel(){if(!cur)return;const n=cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].label:(hls&&hls.levels.length>1?(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{})):(cur.quals.length?(cur.ml||'Principal'):'Auto'));$('#ql').textContent='Qualité ('+n+')'}
 
 /* ---------- contrôles ---------- */
 const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
@@ -1517,6 +1520,7 @@ async function loadMeta(c){
       if(!x||!x.u||c.subs.some(y=>y.url===x.u))return;
       const sb={label:nl(x.l)||'Sous-titres',url:x.u};c.subs.push(sb);addExt(sb,c.subs.length===1);
     });
+    if(typeof m.ml==='string'){c.ml=m.ml;qLabel()}
     /* qualités enregistrées dans la bibliothèque : elles remplacent celles du lien (donc modifiables pour les liens déjà partagés) */
     if(Array.isArray(m.q)){
       const prev=playUrl();
