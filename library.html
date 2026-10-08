@@ -247,7 +247,7 @@ async function load(){
     const r=await fetch('/api/library',{cache:'no-store'}),j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
     data=j.videos;addLocal();fillFolders();show();
-  }catch(e){note('Impossible de charger la bibliothèque : '+e.message)}
+  }catch(e){note('Impossible de charger la bibliothèque : '+e.message+' (affichage des vidéos connues de ce navigateur)');data=[];addLocal();fillFolders();show()}
 }
 $('#nadd').onclick=async()=>{
   const lines=$('#nsrc').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),f=$('#nfold').value.trim(),items=[];
