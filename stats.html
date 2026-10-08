@@ -64,6 +64,15 @@ button:hover{background:rgba(109,109,110,.45)}
 .sbox{max-height:300px;overflow:auto}
 .msg{color:#ffa0a0;margin:14px 0}
 .empty{color:var(--mu);padding:30px 0;text-align:center}
+.rph{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:36px 0 12px}
+.rph h2{margin:0;font-size:24px}
+.rp{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;display:grid;gap:6px;margin-bottom:8px}
+.rp .h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.rp .k{background:var(--red);color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700}
+.rp .t{font-weight:700;overflow-wrap:anywhere}
+.rp .m{color:#fff;white-space:pre-wrap;overflow-wrap:anywhere}
+.rp small{color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.rp .d{margin-left:auto;padding:4px 10px;font-size:13px}
 @media(max-width:560px){.tot{grid-template-columns:1fr 1fr}.row{grid-template-columns:repeat(4,1fr);gap:8px}.row>div:first-child{grid-column:1/-1}}
 </style>
 </head>
@@ -76,6 +85,8 @@ button:hover{background:rgba(109,109,110,.45)}
   <div class="bar"><input id="q" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf">Actualiser</button></div>
   <div class="msg" id="msg"></div>
   <div class="list" id="list"></div>
+  <div class="rph"><h2>⚠️ Signalements</h2><button id="rpc" hidden>Tout effacer</button></div>
+  <div id="rpl"></div>
   <div class="ov" id="ov" hidden><div class="pn" role="dialog" aria-modal="true" aria-labelledby="pt">
     <button class="x" id="px" aria-label="Fermer">✕</button>
     <h2 id="pt"></h2><div class="src" id="ps"></div><div class="lvb" id="pl"></div>
@@ -115,9 +126,27 @@ async function load(){
     $('#tp').textContent=data.reduce((a,d)=>a+d.plays,0);
     $('#tt').textContent=dur(data.reduce((a,d)=>a+(d.secs||0),0));
     $('#tv').textContent=data.length;
-    show();if(openSrc)fillD();
+    show();if(openSrc)fillD();loadReports();
   }catch(e){$('#msg').textContent='Impossible de charger les stats : '+e.message}
 }
+async function loadReports(){
+  try{
+    const r=await fetch('/api/reports',{cache:'no-store'}),j=await r.json();if(!r.ok)throw 0;
+    const box=$('#rpl'),it=j.items||[];box.innerHTML='';$('#rpc').hidden=!it.length;
+    if(!it.length){const e=document.createElement('div');e.className='empty';e.style.padding='14px 0';e.textContent='Aucun signalement.';box.append(e);return}
+    it.forEach(x=>{
+      const c=document.createElement('div'),h=document.createElement('div'),k=document.createElement('span'),t=document.createElement('span'),a=document.createElement('span'),d=document.createElement('button');
+      c.className='rp';h.className='h';k.className='k';k.textContent=x.kind;t.className='t';t.textContent=x.title||'Sans titre';
+      a.style.color='var(--mu)';a.textContent=ago(x.t)+(x.pos?' · à '+Math.floor(x.pos/60)+':'+String(x.pos%60).padStart(2,'0'):'');
+      d.className='d';d.textContent='Supprimer';d.onclick=async()=>{await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({del:x.id})});loadReports()};
+      h.append(k,t,a,d);c.append(h);
+      if(x.msg){const m=document.createElement('div');m.className='m';m.textContent=x.msg;c.append(m)}
+      const sm=document.createElement('small');sm.textContent=x.src;c.append(sm);
+      box.append(c);
+    });
+  }catch(e){$('#rpl').textContent='Impossible de charger les signalements.'}
+}
+$('#rpc').onclick=async()=>{if(!confirm('Effacer tous les signalements ?'))return;await fetch('/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true})});loadReports()};
 let openSrc=null;
 function fillD(){
   const d=data.find(x=>x.src===openSrc);if(!d)return;

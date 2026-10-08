@@ -199,6 +199,21 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 /* barre de volume : 0 à 200 %, repère à 100 %, rouge quand le boost est actif */
 #vw.b2 .bt::after{content:'';position:absolute;left:0;right:0;bottom:50%;height:2px;background:#000a}
 #vw.boost #vf{background:var(--red)}
+/* panneau Épisodes + signalement */
+.eps{min-width:min(440px,72vw)}
+.epl{display:grid;gap:4px;max-height:min(58vh,430px);overflow:auto;padding-right:4px}
+.epi{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:12px 14px;border-radius:8px;color:var(--mu);font-size:16px}
+.epi:hover{background:#ffffff14;color:#fff}
+.epi.on{background:#ffffff1f;color:#fff;font-weight:700}
+.epn{min-width:26px;text-align:center;font-size:20px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
+.ept{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epc{color:var(--red);font-size:13px;font-weight:700}
+.rpt{min-width:min(460px,72vw)}
+.rpk{display:flex;flex-wrap:wrap;gap:8px}
+.rpk .ghost.sel{background:#fff;color:#000;font-weight:700}
+.rpt textarea{display:block;width:100%;min-height:84px;margin:12px 0 4px;padding:10px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:15px;resize:vertical}
+.rpt textarea:focus{border-color:#fff;outline:0}
+.rpt .ghost:disabled{opacity:.4}
 #rsb{gap:8px;font-size:clamp(12px,1.4vw,16px);padding:clamp(7px,1vw,10px) clamp(12px,1.6vw,18px) clamp(7px,1vw,10px) clamp(10px,1.3vw,14px)}
 /* marqueurs sous la barre : intro / générique (jaune) et boucle A-B (bleu) */
 #seek{position:relative;z-index:1}
@@ -302,6 +317,9 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <label>Générique / outro commun (facultatif)
         <input type="text" id="bouro" placeholder="ex. 42:10 : ou ajoute  outro 42:10  à la fin d'une ligne" autocomplete="off">
       </label>
+      <label>Dossier (facultatif)
+        <input type="text" id="bfold" placeholder="ex. Ma série : tous les liens ci-dessus apparaîtront ensemble dans le panneau Épisodes du lecteur" autocomplete="off">
+      </label>
       <label style="display:flex;align-items:center;gap:10px;color:#fff;font-size:15px;cursor:pointer"><input type="checkbox" id="bover" style="width:18px;height:18px;accent-color:#e50914">Remplacer les intros / outros déjà présents dans les liens collés (écris « aucune » dans un champ pour la supprimer)</label>
       <div class="msg" id="batchMsg" role="alert"></div>
       <button type="button" class="btn" id="batchGo">Générer les liens</button>
@@ -374,11 +392,13 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
             <span id="tm">0:00</span>
           </div>
           <div class="acts">
+            <button class="ab" id="eb" hidden><span data-i="eps"></span>Épisodes</button>
             <button class="ab" id="sp"><span data-i="speed"></span><span id="spl">Vitesse (1×)</span></button>
             <button class="ab" id="qb" hidden><span data-i="set"></span><span id="ql">Qualité</span></button>
             <button class="ab" id="ft" aria-label="Format de l'image"><span data-i="ratio"></span><span id="ftl">Format : Ajuster</span></button>
             <button class="ab" id="lk"><span data-i="unlock"></span>Verrouiller</button>
             <button class="ab" id="cc"><span data-i="cc"></span>Audio et sous-titres</button>
+            <button class="ab" id="rpb"><span data-i="flag"></span>Signaler un problème</button>
             <button class="ib" id="fs" aria-label="Plein écran" data-i="fs"></button>
           </div>
         </div>
@@ -439,6 +459,8 @@ fw:ARC+'<text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="mid
 bk:'<g transform="translate(24 0) scale(-1 1)">'+ARC+'</g><text x="12" y="16.5" font-size="7.5" font-weight="700" text-anchor="middle">10</text>',
 cc:'<path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>',
 set:'<path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>',
+eps:'<path d="M4 14h4v-4H4v4zm0 5h4v-4H4v4zM4 9h4V5H4v4zm5 5h12v-4H9v4zm0 5h12v-4H9v4zM9 5v4h12V5H9z"/>',
+flag:'<path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/>',
 ratio:'<path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>',
 pip:'<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
 fs:'<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>',
@@ -711,9 +733,9 @@ $('#batchGo').onclick=()=>{
   libAdd(batch);
   $('#batchMsg').textContent=batch.length?'':'Aucun lien trouvé. Colle au moins un lien http(s)://… ou .m3u8';
   renderBatch();
-  if(batch.length)saveMeta(batch.map(b=>Object.assign({src:b.src,title:b.title||guessTitle(b.src)},b.intro?{intro:b.intro}:{},b.outro?{outro:b.outro}:{}))).catch(()=>{});
+  if(batch.length){const bf=$('#bfold').value.trim();saveMeta(batch.map(b=>Object.assign({src:b.src,title:b.title||guessTitle(b.src)},b.intro?{intro:b.intro}:{},b.outro?{outro:b.outro}:{},bf?{folder:bf}:{}))).catch(()=>{})}
 };
-$('#bintro').onchange=$('#bouro').onchange=$('#bover').onchange=()=>{if(batch.length)$('#batchGo').click()};
+$('#bintro').onchange=$('#bouro').onchange=$('#bfold').onchange=$('#bover').onchange=()=>{if(batch.length)$('#batchGo').click()};
 $('#bkind').onchange=()=>{if(batch.length)renderBatch()};
 $('#bchain').onchange=()=>{if(batch.length)renderBatch()};
 $('#copyAll').onclick=e=>copyText(batch.map(batchLink).join('\n'),e.currentTarget);
@@ -800,8 +822,8 @@ function start(src,title,subs,queue,intro,outro){
   v.crossOrigin='anonymous';
   subs.forEach((s,i)=>addExt(s,i===0));
   if(pos)showResume(pos);
-  if(!cur.q.length)cur.q=libQueue(cur);
-  if(!cur.q.length)guessNext(cur);
+  applyCachedFolder(cur);
+  if(!cur.ep){if(!cur.q.length)cur.q=libQueue(cur);if(!cur.q.length)guessNext(cur)}
   if(window.Hls&&Hls.isSupported())initHls(pos,-1,true);
   else if(v.canPlayType('application/vnd.apple.mpegurl')){
     if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});
@@ -823,7 +845,7 @@ async function guessNext(c){
       const r=await fetch(cand,{signal:ctl.signal,cache:'no-store'});clearTimeout(t);
       try{r.body&&r.body.cancel()}catch(e){}
       if(!r.ok)continue;
-      if(cur!==c||c.q.length)return;
+      if(cur!==c||c.q.length||c.ep)return;
       c.q=[{src:cand,title:EPRE.test(c.title||'')?epBump(c.title,toS):guessTitle(cand)}];
       return;
     }catch(e){}
@@ -1041,6 +1063,8 @@ function openModal(k){
   $('#modal').classList.remove('clear');subEdit=false;panelSync=null;
   if(k==='sub')return subPanel();
   if(k==='addsub')return addSubPanel();
+  if(k==='eps')return epsPanel();
+  if(k==='report')return reportPanel();
   const c=$('#card');c.innerHTML='';
   secs(k).forEach(s=>{
     if(!s.items.length)return;
@@ -1067,7 +1091,7 @@ function qLabel(){if(hls)$('#ql').textContent='Qualité ('+(hls.autoLevelEnabled
 const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
 const toggle=()=>v.paused?v.play().catch(()=>{}):v.pause();
 const seekBy=d=>{v.currentTime=Math.max(0,Math.min(v.duration||1e9,v.currentTime+d))};
-const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro),'_blank');
+const openTab=()=>cur&&window.open(mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro),'_blank');
 function fs(){
   if(document.fullscreenElement||document.webkitFullscreenElement){(document.exitFullscreen||document.webkitExitFullscreen).call(document);return}
   if(pl.requestFullscreen&&document.fullscreenEnabled)pl.requestFullscreen().catch(openTab);
@@ -1149,6 +1173,8 @@ function tsync(){
   $('#tm').textContent=live?'Direct':fmt(d-v.currentTime);
   if(d&&!live&&v.buffered.length)seek.style.setProperty('--b',(v.buffered.end(v.buffered.length-1)/d*100)+'%');
   mkSync();
+  const en=cur?(cur.ep?cur.ep.length:1+cur.q.length):0;
+  if(en!==epShown){epShown=en;$('#eb').hidden=en<2}
 }
 v.addEventListener('play',sync);v.addEventListener('pause',sync);
 v.addEventListener('volumechange',vsync);
@@ -1302,6 +1328,83 @@ function boostRestore(){
 }
 v.addEventListener('loadedmetadata',()=>{if(actx&&bgain)bgain.gain.value=bst||1;else boostRestore()});
 
+/* ---------- dossiers, panneau Épisodes, signalement ---------- */
+var epShown=-1;
+const qOf=c=>c.ep?[]:c.q;
+let FOLD={name:'',items:null,t:0};
+const NAT=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+function epSort(a,b){
+  const ta=a.title||guessTitle(a.src),tb=b.title||guessTitle(b.src),x=epInfo(ta),y=epInfo(tb);
+  if(x&&y&&(x.s!==y.s||x.e!==y.e))return x.s-y.s||x.e-y.e;
+  return NAT.compare(ta,tb);
+}
+function applyFolder(c,name,items){
+  const i=items.findIndex(x=>x.src===c.src);
+  if(i<0||items.length<2)return;
+  c.folder=name;c.ep=items;c.q=items.slice(i+1);
+}
+function applyCachedFolder(c){c.ep=null;if(FOLD.items)applyFolder(c,FOLD.name,FOLD.items)}
+async function loadFolder(c,name){
+  try{
+    let items;
+    if(FOLD.items&&FOLD.name===name&&Date.now()-FOLD.t<30000)items=FOLD.items;
+    else{
+      const r=await fetch('/api/folder?f='+encodeURIComponent(name),{cache:'no-store'});
+      if(!r.ok)return;
+      const j=await r.json();
+      items=(j.items||[]).map(x=>({src:x.src,title:x.title||guessTitle(x.src),intro:x.intro||'',outro:x.outro||'',subs:[]})).sort(epSort);
+      FOLD={name,items,t:Date.now()};
+    }
+    if(cur!==c)return;
+    applyFolder(c,name,items);
+    refreshShare();
+  }catch(e){}
+}
+const epList=()=>cur?(cur.ep||[cur,...cur.q]):[];
+function epsPanel(){
+  const c=$('#card'),m=$('#modal'),list=epList();c.innerHTML='';
+  const d=el('div','sec eps');
+  d.append(el('h4','',cur&&cur.folder?'📁 '+cur.folder:'Épisodes'));
+  const box=el('div','epl');
+  list.forEach((x,i)=>{
+    const on=x.src===cur.src,b=el('button','epi'+(on?' on':''));
+    b.append(el('span','epn',String(i+1)),el('span','ept',x.title||guessTitle(x.src)||'Épisode '+(i+1)));
+    if(on)b.append(el('span','epc','En cours'));
+    b.onclick=()=>{if(on)return closeModal();closeModal();playItem(x,list.slice(i+1))};
+    box.append(b);
+  });
+  d.append(box);c.append(d);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  m.hidden=false;
+  const o=box.querySelector('.on');if(o)o.scrollIntoView({block:'center'});
+}
+$('#eb').onclick=()=>openModal('eps');
+
+const RKINDS=['Pas de son','Sous-titres','Image qui saccade','Qualité','Ne démarre pas','Mauvais épisode','Autre'];
+function reportPanel(){
+  const c=$('#card'),m=$('#modal');c.innerHTML='';
+  const d=el('div','sec rpt');d.append(el('h4','','Signaler un problème'));
+  let kind='';
+  const kb=el('div','rpk'),ta=document.createElement('textarea'),msg=el('p','shint',''),row=el('div','sb'),send=el('button','ghost','Envoyer'),bk=el('button','ghost','Annuler');
+  send.disabled=true;
+  RKINDS.forEach(k=>{const b=el('button','ghost',k);b.onclick=()=>{kind=k;[...kb.children].forEach(y=>y.classList.toggle('sel',y===b));send.disabled=false};kb.append(b)});
+  ta.placeholder='Décris le problème (facultatif)';ta.maxLength=500;
+  send.onclick=async()=>{
+    send.disabled=true;msg.textContent='';
+    try{
+      const r=await fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',kind,msg:ta.value,pos:v.currentTime||0,vid})});
+      if(r.status===429){msg.textContent='Trop de signalements : réessaie dans quelques secondes.';send.disabled=false;return}
+      if(!r.ok)throw 0;
+      closeModal();toast('Merci, signalement envoyé');
+    }catch(e){msg.textContent="Impossible d'envoyer le signalement. Réessaie.";send.disabled=false}
+  };
+  bk.onclick=closeModal;
+  row.append(send,bk);d.append(kb,ta,msg,row);c.append(d);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  m.hidden=false;
+}
+$('#rpb').onclick=()=>openModal('report');
+
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
 async function loadMeta(c){
@@ -1313,6 +1416,7 @@ async function loadMeta(c){
     if(typeof m.i==='string'){c.intro=m.i;c.introT=introT(m.i)}
     if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
     if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}
+    if(typeof m.f==='string'&&m.f)loadFolder(c,m.f);
     refreshShare();fillEd();skpSync();
   }catch(e){}
 }
@@ -1320,8 +1424,8 @@ async function loadMeta(c){
 const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
 function refreshShare(){
   if(!cur)return;
-  const u=mk(cur.src,cur.title,cur.subs,true,cur.q,cur.intro,cur.outro);
-  $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro);
+  const u=mk(cur.src,cur.title,cur.subs,true,qOf(cur),cur.intro,cur.outro);
+  $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro);
   $('#embu').value=u;
   $('#emb').value='<iframe src="'+u+'" style="width:100%;aspect-ratio:16/9;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
   $('#emb2').value='<iframe src="'+u+'" width="800" height="450" style="border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>';
@@ -1334,7 +1438,7 @@ function applyEd(){
   if(!(iv&&!ni))Object.assign(cur,{intro:ni,introT:introT(ni)});
   if(!(ov&&!no))Object.assign(cur,{outro:no,outroT:outroT(no)});
   refreshShare();skpSync();mkSync();
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,cur.q,cur.intro,cur.outro))}catch(e){}}
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro))}catch(e){}}
 }
 function markEd(inp,idx){
   const t=Math.round(v.currentTime),p=inp.value.split(/[-–—>]/).map(x=>x.trim());
@@ -1358,13 +1462,12 @@ $('#shOa').onclick=()=>markEd($('#shO'),0);$('#shOb').onclick=()=>markEd($('#shO
 /* ---------- épisode suivant + écran de fin ---------- */
 const hasNext=()=>!!(cur&&cur.q&&cur.q.length);
 const NX_T=20; /* secondes avant la fin : la carte "Épisode suivant" apparaît */
-function goNext(){
-  if(!hasNext())return;
-  const n=cur.q[0],rest=cur.q.slice(1);
+function playItem(n,rest){
   liveLeave();destroy();
-  start(n.src,n.title,n.subs||[],rest,n.intro||'',n.outro||'');
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,n.title,n.subs||[],false,rest,n.intro||'',n.outro||''))}catch(e){}}
+  start(n.src,n.title||guessTitle(n.src),n.subs||[],rest,n.intro||'',n.outro||'');
+  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro))}catch(e){}}
 }
+function goNext(){if(hasNext())playItem(cur.q[0],cur.q.slice(1))}
 function nxSync(){
   const box=$('#nx');
   if(!hasNext()||nxOff||v.ended){box.hidden=true;return}
