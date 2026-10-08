@@ -92,7 +92,9 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #ldr{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .6s ease,visibility 0s .6s}
 .boot #ldr{opacity:1;visibility:visible;transition:opacity .2s}
 .boot #spin{opacity:0}
-.ldt{color:#fff;font-size:clamp(16px,3vw,26px);font-weight:500;max-width:80%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;animation:ldin 1s .25s ease-out both}
+.boot .ui{opacity:0}.boot .ui *{pointer-events:none!important}.boot{cursor:none}
+.boot #skp,.boot #sko,.boot #rs,.boot #nx,.boot #pz{opacity:0;visibility:hidden;pointer-events:none}
+.ldt{color:#fff;font-family:inherit;font-size:clamp(16px,3vw,26px);font-weight:700;max-width:80%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;animation:ldin 1s .25s ease-out both}
 .ldb{width:min(220px,50%);height:3px;background:#ffffff26;border-radius:2px;overflow:hidden;margin-top:12px}
 .ldb i{display:block;width:40%;height:100%;background:var(--red);border-radius:2px;animation:ldb 1.2s ease-in-out infinite}
 @keyframes ldin{from{opacity:0;transform:scale(.92) translateY(6px)}to{opacity:1;transform:none}}
@@ -540,7 +542,7 @@ function savePos(force){
   if(v.ended||d-t<Math.min(60,d*0.04))putPos(cur.src,null);
   else if(t>=10)putPos(cur.src,{t:Math.floor(t),d:Math.floor(d),u:n});
 }
-let switching=false,hls=null,cur=null,ext=[],curSub=null,drag=false,idleT,locked=false,toastT,unlockT;
+let bootT,switching=false,hls=null,cur=null,ext=[],curSub=null,drag=false,idleT,locked=false,toastT,unlockT;
 
 /* ---------- langues : raccourcis (FR, EN, fr frc…) ---------- */
 const LANGS=[
@@ -915,7 +917,7 @@ const qbVis=()=>{$('#qb').hidden=!cur||((!hls||hls.levels.length<2)&&!cur.quals.
 /* changer de qualité = relancer le flux (autre lien) à la même position */
 function reloadSrc(msg){
   const t=v.currentTime,was=!v.paused,a=hls?hls.audioTrack:-1;
-  switching=true;pl.classList.add('wait');toast(msg);
+  switching=true;pl.classList.add('wait','boot');toast(msg);
   if(hls)initHls(t,a,was);
   else{v.src=playUrl();v.addEventListener('loadedmetadata',()=>{v.currentTime=t},{once:true});if(was)v.play().catch(()=>{})}
   setTimeout(()=>{switching=false},10000);
@@ -953,7 +955,7 @@ function setAudio(i){
   if(!hls||hls.audioTrack===i)return;
   {const t=hls.audioTracks[i];if(t)savePref('audio',t.name||t.lang||'')}
   const t=v.currentTime,was=!v.paused;
-  switching=true;pl.classList.add('wait');toast('Changement de langue…');
+  switching=true;pl.classList.add('wait','boot');toast('Changement de langue…');
   initHls(t,i,was);
   setTimeout(()=>{switching=false},10000);
 }
@@ -1291,7 +1293,8 @@ function tsync(){
 v.addEventListener('play',sync);v.addEventListener('pause',sync);
 v.addEventListener('volumechange',vsync);
 ['timeupdate','progress','durationchange','loadedmetadata'].forEach(n=>v.addEventListener(n,tsync));
-v.addEventListener('waiting',()=>pl.classList.add('wait'));
+v.addEventListener('waiting',()=>{pl.classList.add('wait');clearTimeout(bootT);bootT=setTimeout(()=>{if(pl.classList.contains('wait'))pl.classList.add('boot')},1500)});
+['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>clearTimeout(bootT)));
 ['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
 ['playing','canplay'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('boot')));
 v.addEventListener('loadstart',()=>pl.classList.add('wait'));
