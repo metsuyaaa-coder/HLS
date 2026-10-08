@@ -16,8 +16,11 @@ header a:not(.logo):hover{color:#fff}
 h1{font-size:clamp(26px,5vw,38px);margin:0 0 6px}
 .lead{color:var(--mu);margin:0 0 22px;line-height:1.5}
 .bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-input[type=text],input[type=url]{width:100%;padding:11px 12px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:15px}
-input:focus{border-color:#fff;outline:0}
+input[type=text],input[type=url],textarea,select{width:100%;padding:11px 12px;background:#333;border:1px solid transparent;border-radius:8px;color:#fff;font:inherit;font-size:15px}
+input:focus,textarea:focus,select:focus{border-color:#fff;outline:0}
+textarea{resize:vertical;min-height:90px}
+select{width:auto;min-width:150px;cursor:pointer}
+.fd{grid-column:1/-1}
 .bar input{flex:1;min-width:180px;width:auto}
 button,.btn{font:inherit;color:#fff;background:rgba(109,109,110,.7);border:0;border-radius:8px;padding:10px 14px;cursor:pointer;font-size:14px;text-decoration:none;display:inline-block;white-space:nowrap}
 button:hover,.btn:hover{background:rgba(109,109,110,.45)}
@@ -48,17 +51,18 @@ details.add summary{cursor:pointer;font-weight:600}
 <header><a class="logo" href="/">FLUX</a><a href="/">← Générateur</a><a href="/stats.html">📊 Statistiques</a></header>
 <div class="wrap">
   <h1>Bibliothèque</h1>
-  <p class="lead">Toutes tes vidéos au même endroit. Ce que tu enregistres ici (titre, intro, générique) s'applique à <b>tous les liens</b> de la vidéo, y compris ceux déjà partagés ou intégrés ailleurs. Format des temps : <b>0:45-1:50</b> pour l'intro, <b>42:10</b> pour le début du générique. Laisse vide pour ne rien changer, écris <b>aucune</b> pour supprimer.</p>
+  <p class="lead">Toutes tes vidéos au même endroit. Ce que tu enregistres ici (titre, intro, générique) s'applique à <b>tous les liens</b> de la vidéo, y compris ceux déjà partagés ou intégrés ailleurs. Format des temps : <b>0:45-1:50</b> pour l'intro, <b>42:10</b> pour le début du générique. Laisse vide pour ne rien changer, écris <b>aucune</b> pour supprimer.<br>📁 <b>Dossiers</b> : mets plusieurs épisodes dans le même dossier et le panneau « Épisodes » du lecteur affichera exactement ceux-là, sur tous leurs liens.</p>
 
-  <details class="add"><summary>➕ Ajouter une vidéo</summary>
+  <details class="add"><summary>➕ Ajouter des vidéos</summary>
     <div class="addf">
-      <input type="url" id="nsrc" placeholder="https://exemple.com/video/master.m3u8" autocomplete="off">
-      <input type="text" id="ntit" placeholder="Titre (facultatif)" autocomplete="off">
+      <textarea id="nsrc" placeholder="Un lien par ligne. Pour donner un titre : Titre | https://exemple.com/video/master.m3u8" autocomplete="off"></textarea>
+      <input type="text" id="nfold" list="folders" placeholder="Dossier (facultatif) : ex. Ma série" autocomplete="off">
       <div><button class="red" id="nadd" type="button">Ajouter</button></div>
     </div>
   </details>
+  <datalist id="folders"></datalist>
 
-  <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><button id="rf" type="button">Actualiser</button></div>
+  <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><select id="fsel" aria-label="Dossier"><option value="">Tous les dossiers</option></select><button id="rf" type="button">Actualiser</button></div>
   <div class="msg" id="msg" role="alert"></div>
   <p class="cnt" id="cnt"></p>
   <div class="list" id="list"></div>
@@ -99,11 +103,13 @@ function card(v){
   const mkf=(lab,val,ph)=>{const l=document.createElement('label'),i=document.createElement('input');i.type='text';i.value=val;i.placeholder=ph;i.autocomplete='off';l.append(lab,i);return[l,i]};
   const [li,ii]=mkf('Intro (début-fin)',rng(v.intro),'0:45-1:50');
   const [lo,io]=mkf('Générique de fin (début, fin facultative)',rng(v.outro),'42:10');
-  tm.append(li,lo);
+  const [lf,fi]=mkf('📁 Dossier (les épisodes d\'un même dossier s\'affichent ensemble dans le lecteur)',v.folder||'','Aucun dossier');lf.className='fd';fi.setAttribute('list','folders');
+  tm.append(li,lo,lf);
   const meta=document.createElement('div');meta.className='meta';
   const info=()=>{
     meta.textContent='';
     if(v.saved){const b=document.createElement('span');b.className='badge';b.textContent='● Réglages enregistrés';meta.append(b)}
+    if(v.folder){const b=document.createElement('span');b.textContent='📁 '+v.folder;meta.append(b)}
     const parts=[v.plays+' vue'+(v.plays>1?'s':''),dur(v.secs)+' regardés'];
     if(v.last)parts.push('dernière vue '+ago(v.last));
     const s=document.createElement('span');s.textContent=parts.join(' · ');meta.append(s);
@@ -120,21 +126,22 @@ function card(v){
   box.append(top,src,tm,meta,acts);
 
   /* champs modifiés seulement : on n'écrase jamais ce qu'on n'a pas touché */
-  const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro)});
-  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o;sv.disabled=!d;box.classList.toggle('dirty',d)};
-  [ti,ii,io].forEach(x=>x.oninput=dirty);
+  const orig=()=>({t:v.title||'',i:rng(v.intro),o:rng(v.outro),f:v.folder||''});
+  const dirty=()=>{const o=orig(),d=ti.value.trim()!==o.t||ii.value.trim()!==o.i||io.value.trim()!==o.o||fi.value.trim()!==o.f;sv.disabled=!d;box.classList.toggle('dirty',d)};
+  [ti,ii,io,fi].forEach(x=>x.oninput=dirty);
   const clear=x=>/^(aucune?|none|off|non|supprimer)$/i.test(x.trim());
   sv.onclick=async()=>{
     const o=orig(),it={src:v.src};
     let ni=v.intro,no=v.outro;
     if(ti.value.trim()!==o.t)it.title=ti.value.trim();
+    if(fi.value.trim()!==o.f)it.folder=fi.value.trim();
     if(ii.value.trim()!==o.i){const x=ii.value.trim();const n=clear(x)||!x?'':normIntro(x);if(x&&!clear(x)&&!n)return note('Intro invalide : écris par exemple 0:45-1:50.');it.intro=n;ni=n}
     if(io.value.trim()!==o.o){const x=io.value.trim();const n=clear(x)||!x?'':normOutro(x);if(x&&!clear(x)&&!n)return note('Générique invalide : écris par exemple 42:10.');it.outro=n;no=n}
     sv.disabled=true;
     try{
       const r=await post([it]);if(!r.ok)throw new Error(r.status);
-      if('title' in it)v.title=it.title;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
-      ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();
+      if('title' in it)v.title=it.title;if('folder' in it)v.folder=it.folder;if('intro' in it)v.intro=ni;if('outro' in it)v.outro=no;v.saved=true;
+      ii.value=rng(v.intro);io.value=rng(v.outro);rm.hidden=false;info();upd();dirty();fillFolders();
       note('✓ « '+(v.title||'Sans titre')+' » enregistré : tous ses liens sont mis à jour.',true);
     }catch(e){sv.disabled=false;note("Impossible d'enregistrer ("+(e.message||e)+").")}
   };
@@ -142,16 +149,25 @@ function card(v){
     if(!confirm('Retirer les réglages enregistrés (titre, intro, générique) de cette vidéo ? Ses liens retrouveront ce qu\'ils contiennent eux-mêmes.'))return;
     try{
       const r=await post([{src:v.src,del:true}]);if(!r.ok)throw new Error(r.status);
-      v.saved=false;v.intro=null;v.outro=null;ii.value='';io.value='';rm.hidden=true;info();upd();dirty();
+      v.saved=false;v.intro=null;v.outro=null;v.folder='';ii.value='';io.value='';fi.value='';rm.hidden=true;info();upd();dirty();fillFolders();
       note('Réglages retirés.',true);
     }catch(e){note('Impossible de retirer ('+(e.message||e)+').')}
   };
   return box;
 }
 
+function fillFolders(){
+  const names=[...new Set(data.map(d=>d.folder).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const dl=$('#folders');dl.innerHTML='';names.forEach(n=>{const o=document.createElement('option');o.value=n;dl.append(o)});
+  const sel=$('#fsel'),cur=sel.value;sel.innerHTML='';
+  const all=document.createElement('option');all.value='';all.textContent='Tous les dossiers';sel.append(all);
+  names.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent='📁 '+n+' ('+data.filter(d=>d.folder===n).length+')';sel.append(o)});
+  sel.value=names.includes(cur)?cur:'';
+}
 function show(){
   const q=$('#q').value.trim().toLowerCase(),box=$('#list');box.innerHTML='';
-  const rows=data.filter(d=>!q||(d.title+' '+d.src).toLowerCase().includes(q));
+  const fs=$('#fsel').value;
+  const rows=data.filter(d=>(!q||(d.title+' '+d.src+' '+(d.folder||'')).toLowerCase().includes(q))&&(!fs||(d.folder||'')===fs));
   $('#cnt').textContent=data.length?rows.length+' / '+data.length+' vidéo'+(data.length>1?'s':''):'';
   if(!rows.length){const e=document.createElement('div');e.className='empty';e.textContent=data.length?'Aucun résultat.':'Aucune vidéo pour le moment. Génère un lien depuis la page d\'accueil ou ajoute une vidéo ci-dessus.';box.append(e);return}
   rows.forEach(v=>box.append(card(v)));
@@ -161,18 +177,23 @@ async function load(){
   try{
     const r=await fetch('/api/library',{cache:'no-store'}),j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
-    data=j.videos;show();
+    data=j.videos;fillFolders();show();
   }catch(e){note('Impossible de charger la bibliothèque : '+e.message)}
 }
 $('#nadd').onclick=async()=>{
-  const s=$('#nsrc').value.trim();
-  if(!/^https?:\/\//i.test(s))return note('Le lien doit commencer par http:// ou https://');
+  const lines=$('#nsrc').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),f=$('#nfold').value.trim(),items=[];
+  for(const l of lines){
+    const m=l.match(/^(.*?)\s*\|\s*(https?:\/\/\S+)$/i),src=m?m[2]:l,t=m?m[1].trim():'';
+    if(!/^https?:\/\//i.test(src))return note('Chaque ligne doit contenir un lien commençant par http:// ou https://');
+    items.push(Object.assign({src},t?{title:t}:{},f?{folder:f}:{}));
+  }
+  if(!items.length)return note('Colle au moins un lien.');
   try{
-    const r=await post([{src:s,title:$('#ntit').value.trim()}]);if(!r.ok)throw new Error(r.status);
-    $('#nsrc').value='';$('#ntit').value='';note('✓ Vidéo ajoutée.',true);load();
+    const r=await post(items);if(!r.ok)throw new Error(r.status);
+    $('#nsrc').value='';note('✓ '+items.length+' vidéo'+(items.length>1?'s ajoutées':' ajoutée')+(f?' au dossier « '+f+' »':'')+'.',true);load();
   }catch(e){note("Impossible d'ajouter ("+(e.message||e)+").")}
 };
-$('#rf').onclick=load;$('#q').oninput=show;load();
+$('#rf').onclick=load;$('#q').oninput=show;$('#fsel').onchange=show;load();
 </script>
 </body>
 </html>
