@@ -69,7 +69,7 @@ details.add summary{cursor:pointer;font-weight:600}
   </details>
   <datalist id="folders"></datalist>
 
-  <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><select id="fsel" aria-label="Dossier"><option value="">Tous les dossiers</option></select><button id="rf" type="button">Actualiser</button></div>
+  <div class="bar"><input id="q" type="text" placeholder="Rechercher une vidéo…" aria-label="Rechercher"><select id="fsel" aria-label="Dossier"><option value="">Tous les dossiers</option></select><select id="sort" aria-label="Trier"><option value="">Tri : par défaut</option><option value="az">Ordre alphabétique (A → Z)</option><option value="za">Ordre alphabétique (Z → A)</option></select><button id="rf" type="button">Actualiser</button></div>
   <div class="msg" id="msg" role="alert"></div>
   <p class="cnt" id="cnt"></p>
   <p class="cnt" id="dbs" style="opacity:.55"></p>
@@ -233,6 +233,12 @@ function show(){
   const rows=data.filter(d=>(!q||(d.title+' '+d.src+' '+(d.folder||'')).toLowerCase().includes(q))&&(!fs||(d.folder||'')===fs));
   $('#cnt').textContent=data.length?rows.length+' / '+data.length+' vidéo'+(data.length>1?'s':''):'';
   if(!rows.length){const e=document.createElement('div');e.className='empty';e.textContent=data.length?'Aucun résultat.':'Aucune vidéo pour le moment. Génère un lien depuis la page d\'accueil ou ajoute une vidéo ci-dessus.';box.append(e);return}
+  const so=$('#sort').value;
+  if(so){
+    const key=v=>(v.title||'').trim();
+    const dir=so==='za'?-1:1;
+    rows.sort((x,y)=>{const a=key(x),b=key(y);if(!a&&!b)return 0;if(!a)return 1;if(!b)return-1;return dir*a.localeCompare(b,'fr',{numeric:true,sensitivity:'base'})});
+  }
   rows.forEach(v=>box.append(card(v)));
 }
 async function fetchLib(){
@@ -302,6 +308,8 @@ $('#nadd').onclick=async()=>{
     $('#nsrc').value='';note('✓ '+items.length+' vidéo'+(items.length>1?'s ajoutées':' ajoutée')+(f?' au dossier « '+f+' »':'')+'.',true);load();
   }catch(e){note("Impossible d'ajouter ("+(e.message||e)+").")}
 };
+try{const sv=localStorage.getItem('flux-sort');if(sv==='az'||sv==='za')$('#sort').value=sv}catch(e){}
+$('#sort').onchange=()=>{try{localStorage.setItem('flux-sort',$('#sort').value)}catch(e){}show()};
 $('#rf').onclick=load;$('#q').oninput=show;$('#fsel').onchange=show;load();
 </script>
 </body>
