@@ -1,5 +1,5 @@
 /* Flux : mode hors ligne. Met en cache la page du lecteur et hls.js ; ne touche pas à /api. */
-const V = 'flux-v1';
+const V = 'flux-v2';
 const HLS = 'https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js';
 const STATIC = ['/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
 

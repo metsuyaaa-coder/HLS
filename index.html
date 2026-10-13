@@ -1124,6 +1124,7 @@ function secs(k){
     return[
       {t:'Audio',items:a.length>1?a.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,close:true,f:()=>setAudio(i)})):localAudio()},
       {t:'Sous-titres',items:[{l:'Désactivés',on:!curSub,f:()=>{setSub(null);savePref('sub','')}}].concat(subList().map(it=>({l:it.name,on:isOn(it),f:()=>{setSub(it);savePref('sub',it.name)}})))},
+      {t:'Fichier',items:cur&&cur.local&&cur.embNote?[{l:cur.embNote,f:()=>{}}]:[]},
       {t:'Réglages',items:[{l:'Ajouter mes sous-titres…',go:'addsub'},{l:'Paramètres des sous-titres…',go:'sub'}]}
     ];
   }
@@ -1957,12 +1958,16 @@ const embLab=(lang,name,forced,i)=>{
 async function embLocal(c){
   const L=LOCALS[c.src];if(!L||!L.file)return;
   try{
-    const info=await embProbe(L.file);if(cur!==c||!info)return;
+    c.embNote='Analyse du fichier…';
+    const info=await embProbe(L.file);if(cur!==c)return;
+    if(!info){c.embNote="Format non analysable (seuls MP4/MOV et MKV/WebM le sont).";return}
     c.lAudio=info.audio;
+    const imgs=info.subs.filter(x=>!x.text).length;
+    c.embNote=info.kind.toUpperCase()+' : '+info.audio.length+' audio, '+info.subs.length+' sous-titre'+(info.subs.length>1?'s':'')+(imgs?' ('+imgs+' en image, non lisible'+(imgs>1?'s':'')+')':'');
     if(info.audio.length>1&&!(v.audioTracks&&v.audioTracks.length>1))toast('Ce fichier a '+info.audio.length+' pistes audio, mais ce navigateur ne peut lire que la première.');
     const texts=info.subs.filter(x=>x.text);
     if(!texts.length)return;
-    c.embSubs=true;
+    c.embSubs=true;c.embNote+=' · extraction…';
     if(info.kind==='mkv'&&L.file.size>200e6)toast('Lecture des sous-titres intégrés…');
     await embExtract(L.file,info,()=>cur!==c);
     if(cur!==c)return;
@@ -1974,8 +1979,9 @@ async function embLocal(c){
       const url=URL.createObjectURL(new Blob([embVtt(x.cues)],{type:'text/vtt'}));
       addExt({label:lab,url},false);n++;
     });
+    c.embNote=c.embNote.replace(' · extraction…',' · '+n+' extrait'+(n>1?'s':''));
     if(n)toast(n+' piste'+(n>1?'s':'')+' de sous-titres intégrée'+(n>1?'s':'')+' trouvée'+(n>1?'s':''));
-  }catch(e){console.warn('pistes intégrées',e)}
+  }catch(e){console.warn('pistes intégrées',e);c.embNote="Erreur d'analyse : "+(e&&e.message||e)}
 }
 const embAName=(x,t,i)=>{
   const lang=(x&&x.lang)||(t&&t.language)||'';
