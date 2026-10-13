@@ -258,10 +258,10 @@ a.ghost{text-decoration:none;display:inline-block}
 .ri span{display:block;color:var(--mu);font:12px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .cnt{color:var(--mu);font-size:14px}
 /* ===== mode embed : le lecteur remplit tout l'iframe ===== */
-body.embed{background:#000;overflow:hidden}
-body.embed header,body.embed .share,body.embed #close{display:none}
-body.embed .stage{max-width:none;padding:0}
-body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:auto;border-radius:0}
+body.embed,body.local{background:#000;overflow:hidden}
+body.embed header,body.embed .share,body.embed #close,body.local header,body.local .share{display:none}
+body.embed .stage,body.local .stage{max-width:none;padding:0}
+body.embed .player,body.local .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:auto;border-radius:0}
 
 @media(max-width:640px){
   .sub{grid-template-columns:1fr auto}.sub input:nth-child(2){grid-column:1/-1;order:3}
@@ -844,7 +844,7 @@ const parseSubs=a=>a.map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titr
 function route(){
   const q=new URLSearchParams(location.search),raw=q.get('s')||q.get('src'),src=raw?full(raw):'';
   const open=(q.get('e')||q.get('embed'))==='1'&&!!src;
-  document.body.classList.toggle('embed',open);
+  document.body.classList.toggle('embed',open);document.body.classList.remove('local');
   destroy();
   if(!open&&!authed()){$('#home').hidden=true;$('#watch').hidden=true;$('#gate').hidden=false;document.title='Accès privé';return}
   $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
@@ -1739,15 +1739,22 @@ document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
 route();
 
 /* ---------- pistes intégrées (MP4 / MKV) : lecture de l'en-tête du fichier, sans tout charger ---------- */
-function embReader(f,csz){
-  let cs=0,ce=0,cb=null;
+function embReader(f,csz,ahead){
+  let cs=0,ce=0,cb=null,nx=null;
+  const load=o=>{const len=Math.min(f.size-o,csz);return{s:o,e:o+len,p:embU8(f,o,o+len)}};
   return{async get(o,n){
     if(o<0||o>=f.size)return new Uint8Array(0);
     n=Math.min(n,f.size-o);
     if(cb&&o>=cs&&o+n<=ce)return cb.subarray(o-cs,o-cs+n);
-    const len=Math.min(f.size-o,Math.max(csz,n));
-    cb=new Uint8Array(await f.slice(o,o+len).arrayBuffer());cs=o;ce=o+len;
-    return cb.subarray(0,n);
+    if(cb&&o>=cs&&o<ce&&nx&&nx.s===ce&&o+n<=nx.e){
+      const nb=await nx.p,a=cb.subarray(o-cs),out=new Uint8Array(n);
+      out.set(a);out.set(nb.subarray(0,n-a.length),a.length);return out;
+    }
+    if(n>csz)return embU8(f,o,o+n);
+    const w=(nx&&o>=nx.s&&o+n<=nx.e)?nx:load(o);
+    cb=await w.p;cs=w.s;ce=w.e;
+    nx=ahead&&ce<f.size?load(ce):null;
+    return cb.subarray(o-cs,o-cs+n);
   }};
 }
 const embU8=async(f,a,b)=>new Uint8Array(await f.slice(a,b).arrayBuffer());
@@ -1824,12 +1831,12 @@ const embAssText=d=>{
   if(/\\p[1-9]/.test(t))return'';
   return t.replace(/\{[^}]*\}/g,'').replace(/\\[Nn]/g,'\n').replace(/\\h/g,' ').trim();
 };
-async function mkvExtract(f,info,stop){
-  const want={};info.subs.filter(x=>x.text).forEach(x=>{want[x.num]=x;x.cues=[]});
+async function mkvExtract(f,info,stop,prog){
+  const want={};info.subs.filter(x=>x.text).forEach(x=>{want[x.num]=x;x.cues=x.cues||[]});
   if(info.first==null||!Object.keys(want).length)return;
-  const R=embReader(f,4<<20),dec=new TextDecoder('utf-8');let pos=info.first,clTs=0,last=null,n=0;
+  const R=embReader(f,8<<20,true),dec=new TextDecoder('utf-8');let pos=info.first,clTs=0,last=null,n=0;
   while(pos<f.size){
-    if(++n%200===0&&stop())return;
+    if(++n%200===0){if(stop())return;if(prog)prog(pos/f.size)}
     const hb=await R.get(pos,16),id=embVint(hb,0,true),sz=id&&embVint(hb,id.len,false);
     if(!id||!sz)break;
     const body=pos+id.len+sz.len,I=id.val;
@@ -1843,11 +1850,11 @@ async function mkvExtract(f,info,stop){
         let text=/ASS|SSA/.test(x.codec)?embAssText(raw):raw;
         text=text.replace(/\r/g,'').replace(/\n{2,}/g,'\n').trim();
         last=null;
-        if(text){last={t:(clTs+rel)*info.scale/1e9,d:null,text};x.cues.push(last)}
+        if(text){const st=(clTs+rel)*info.scale/1e9;last={startTime:st,endTime:st+4,text,dd:false};x.cues.push(last)}
       }
       pos=body+sz.val;continue;
     }
-    if(I===0x9B){const b=await R.get(body,sz.val);if(last&&last.d==null)last.d=embNum(b,0,b.length)*info.scale/1e9;pos=body+sz.val;continue}
+    if(I===0x9B){const b=await R.get(body,sz.val);if(last&&!last.dd){last.endTime=last.startTime+embNum(b,0,b.length)*info.scale/1e9;last.dd=true}pos=body+sz.val;continue}
     pos=sz.unk?body:body+sz.val;
   }
 }
@@ -1915,7 +1922,7 @@ async function mp4Extract(f,info,stop){
     }
     const start=new Array(n),dur=new Array(n);let tm=0,i=0;
     for(const [cnt,d] of t.stts)for(let k=0;k<cnt&&i<n;k++,i++){start[i]=tm/t.tsc;dur[i]=d/t.tsc;tm+=d}
-    x.cues=[];
+    x.cues=x.cues||[];
     for(let a=0;a<n;a+=40){
       if(stop())return;
       const idx=[];for(let i=a;i<Math.min(n,a+40);i++)idx.push(i);
@@ -1925,7 +1932,7 @@ async function mp4Extract(f,info,stop){
         if(t.codec==='tx3g'){const l=(b[0]<<8)|b[1];text=dec.decode(b.subarray(2,2+l))}
         else for(const bx of embBoxes(b,0,b.length))if(bx.type==='vttc')for(const p of embBoxes(b,bx.s,bx.e))if(p.type==='payl')text+=dec.decode(b.subarray(p.s,p.e));
         text=text.replace(/\r/g,'').replace(/\n{2,}/g,'\n').trim();
-        if(text)x.cues.push({t:start[i],d:dur[i],text});
+        if(text)x.cues.push({startTime:start[i],endTime:start[i]+Math.max(dur[i],0.2),text});
       });
     }
   }
@@ -1945,8 +1952,8 @@ function embVtt(cues){
     return embClock(c.t)+' --> '+embClock(Math.max(end,c.t+0.2))+'\n'+c.text.replace(/-->/g,'->')+'\n';
   }).join('\n');
 }
-async function embExtract(f,info,stop){
-  if(info.kind==='mkv')await mkvExtract(f,info,stop);else await mp4Extract(f,info,stop);
+async function embExtract(f,info,stop,prog){
+  if(info.kind==='mkv')await mkvExtract(f,info,stop,prog);else await mp4Extract(f,info,stop);
 }
 
 /* branchement au lecteur : sous-titres et pistes audio du fichier local */
@@ -1963,24 +1970,29 @@ async function embLocal(c){
     if(!info){c.embNote="Format non analysable (seuls MP4/MOV et MKV/WebM le sont).";return}
     c.lAudio=info.audio;
     const imgs=info.subs.filter(x=>!x.text).length;
-    c.embNote=info.kind.toUpperCase()+' : '+info.audio.length+' audio, '+info.subs.length+' sous-titre'+(info.subs.length>1?'s':'')+(imgs?' ('+imgs+' en image, non lisible'+(imgs>1?'s':'')+')':'');
+    const base=info.kind.toUpperCase()+' : '+info.audio.length+' audio, '+info.subs.length+' sous-titre'+(info.subs.length>1?'s':'')+(imgs?' ('+imgs+' en image, non lisible'+(imgs>1?'s':'')+')':'');
+    c.embNote=base;
     if(info.audio.length>1&&!(v.audioTracks&&v.audioTracks.length>1))toast('Ce fichier a '+info.audio.length+' pistes audio, mais ce navigateur ne peut lire que la première.');
     const texts=info.subs.filter(x=>x.text);
     if(!texts.length)return;
-    c.embSubs=true;c.embNote+=' · extraction…';
-    if(info.kind==='mkv'&&L.file.size>200e6)toast('Lecture des sous-titres intégrés…');
-    await embExtract(L.file,info,()=>cur!==c);
-    if(cur!==c)return;
-    let n=0;
+    c.embSubs=true;
+    /* les pistes apparaissent tout de suite dans le menu ; leurs lignes arrivent pendant la lecture du fichier */
+    const made=[];
     texts.forEach((x,i)=>{
-      if(!x.cues||!x.cues.length)return;
       let lab=embLab(x.lang,x.name,x.forced,i);
       if(ext.some(e=>e.name===lab))lab+=' '+(i+1);
-      const url=URL.createObjectURL(new Blob([embVtt(x.cues)],{type:'text/vtt'}));
-      addExt({label:lab,url},false);n++;
+      const t=document.createElement('track');t.kind='subtitles';t.label=lab;v.appendChild(t);t.track.mode='disabled';
+      x.cues=[];const it={name:lab,track:t.track,ext:true,cues:x.cues};ext.push(it);made.push(it);
+      if(prefs.sub&&!curSub&&sameLab(lab,prefs.sub))setSub(it);
     });
-    c.embNote=c.embNote.replace(' · extraction…',' · '+n+' extrait'+(n>1?'s':''));
-    if(n)toast(n+' piste'+(n>1?'s':'')+' de sous-titres intégrée'+(n>1?'s':'')+' trouvée'+(n>1?'s':''));
+    c.embNote=base+' · extraction 0 %';
+    let lastP=-1;
+    await embExtract(L.file,info,()=>cur!==c,p=>{const q=Math.min(99,Math.round(p*100));if(q!==lastP){lastP=q;c.embNote=base+' · extraction '+q+' %'}});
+    if(cur!==c)return;
+    made.forEach(it=>it.cues.sort((a,b)=>a.startTime-b.startTime));
+    const n=made.filter(it=>it.cues.length).length,tot=made.reduce((a,it)=>a+it.cues.length,0);
+    c.embNote=base+' · '+n+' extrait'+(n>1?'s':'')+' ('+tot+' lignes)';
+    toast(n?n+' piste'+(n>1?'s':'')+' de sous-titres prête'+(n>1?'s':''):'Aucun texte trouvé dans les sous-titres du fichier');
   }catch(e){console.warn('pistes intégrées',e);c.embNote="Erreur d'analyse : "+(e&&e.message||e)}
 }
 const embAName=(x,t,i)=>{
@@ -2014,7 +2026,7 @@ async function openLocal(list){
     LOCALS[key]={url:URL.createObjectURL(f),subs,file:f};
     items.push({src:key,title,subs});
   }
-  destroy();document.body.classList.remove('embed');
+  destroy();document.body.classList.remove('embed');document.body.classList.add('local');
   $('#gate').hidden=true;$('#home').hidden=true;$('#watch').hidden=false;
   start(items[0].src,items[0].title,items[0].subs,items.slice(1),'','',[]);
 }
