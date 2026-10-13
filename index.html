@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#141414">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <title>Flux – Lecteur HLS</title>
 <script>
 /* Google Cast : le callback doit exister avant le chargement du SDK */
@@ -88,33 +94,22 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #spin{position:absolute;top:50%;left:50%;width:60px;height:60px;margin:-30px;border:4px solid #fff3;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite;pointer-events:none;opacity:0;transition:opacity .2s}
 .wait #spin{opacity:1}
 @keyframes sp{to{transform:rotate(360deg)}}
-/* écran de chargement : au démarrage d'une vidéo, fond noir + logo + titre + barre rouge */
-#ldr{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .6s ease,visibility 0s .6s}
-.boot #ldr{opacity:1;visibility:visible;transition:opacity .2s}
-.boot #spin{opacity:0}
-.boot .ui{opacity:0}.boot .ui *{pointer-events:none!important}.boot{cursor:none}
-.boot #skp,.boot #sko,.boot #rs,.boot #nx,.boot #pz{opacity:0;visibility:hidden;pointer-events:none}
-.ldt{color:#fff;font-family:inherit;font-size:clamp(16px,3vw,26px);font-weight:700;max-width:80%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85;animation:ldin 1s .25s ease-out both}
-.ldb{width:min(220px,50%);height:3px;background:#ffffff26;border-radius:2px;overflow:hidden;margin-top:12px}
-.ldb i{display:block;width:40%;height:100%;background:var(--red);border-radius:2px;animation:ldb 1.2s ease-in-out infinite}
-@keyframes ldin{from{opacity:0;transform:scale(.92) translateY(6px)}to{opacity:1;transform:none}}
-@keyframes ldb{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
-@media(prefers-reduced-motion:reduce){.ldt{animation:none}.ldb i{animation-duration:3s}#spin{animation-duration:2.4s}.fb.go{animation-duration:.01s}}
+@media(prefers-reduced-motion:reduce){#spin{animation-duration:2.4s}.fb.go{animation-duration:.01s}}
 #unlock{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:30px;background:#000b;border:1px solid #fff5;font-weight:700;backdrop-filter:blur(8px)}
 #unlock svg{width:22px;height:22px}
 .locked .ui{display:none}
 #toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);background:#000c;padding:10px 18px;border-radius:24px;font-size:14px;pointer-events:none}
 #err{position:absolute;inset:0;display:grid;place-content:center;gap:16px;text-align:center;padding:24px;background:#000e;font-size:17px;line-height:1.4}
-.modal{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#0000008c,#000000b3);z-index:5}
-.card{position:relative;background:#000;border:0;border-radius:6px;padding:30px 36px;max-width:92%;max-height:84%;overflow:auto;display:flex;gap:56px;box-shadow:0 16px 60px #000c;scrollbar-width:thin;scrollbar-color:#555 transparent}
-.sec{min-width:170px}
-.sec h4{margin:0 0 14px;font-size:21px;font-weight:700;color:#fff;letter-spacing:.2px}
-.it{display:block;width:100%;text-align:left;padding:10px 14px 10px 38px;font-size:17px;color:#b3b3b3;position:relative;border-radius:4px;transition:color .15s,background .15s}
-.it:hover{background:#ffffff1f;color:#fff}
+.modal{position:absolute;inset:0;display:grid;place-items:center;background:#0008;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:5}
+.card{position:relative;background:#181818f2;border:1px solid #ffffff1f;border-radius:16px;padding:22px 26px;max-width:92%;max-height:84%;overflow:auto;display:flex;gap:36px}
+.sec{min-width:150px}
+.sec h4{margin:0 0 8px;font-size:18px;font-weight:700}
+.it{display:block;width:100%;text-align:left;padding:9px 14px 9px 34px;font-size:16px;color:var(--mu);position:relative;border-radius:8px}
+.it:hover{background:#ffffff14;color:#fff}
 .it.on{color:#fff;font-weight:700}
-.it.on::before{content:"✓";position:absolute;left:12px;color:#fff;font-weight:400}
+.it.on::before{content:"✓";position:absolute;left:10px;color:var(--red)}
 .cx{position:absolute;right:8px;top:8px}
-.card.has-x{padding-right:68px}
+.card.has-x{padding-right:56px}
 .share{max-width:1280px;margin:0 auto;padding:28px 4vw 60px;display:grid;gap:18px}
 .share h2{font-size:20px;margin:0}
 .share p{color:var(--mu);margin:0;font-size:14px;line-height:1.5}
@@ -134,7 +129,7 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 .addsub .ok{color:#46d369;font-size:14px;min-height:1em}
 .addsub .msg{min-height:1em}
 .modal.clear{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;place-items:start center;pointer-events:none}
-.modal.clear .card{pointer-events:auto;margin-top:8px;background:#000;max-height:calc(100% - 16px)}
+.modal.clear .card{pointer-events:auto;margin-top:8px;background:#181818e0;max-height:calc(100% - 16px)}
 #subtxt{position:absolute;left:50%;top:88%;transform:translate(-50%,-100%);width:max-content;max-width:86%;text-align:center;color:#fff;font:500 20px/1.3 "Helvetica Neue",Arial,sans-serif;text-shadow:0 0 3px #000,0 0 3px #000,0 0 6px #000,1px 1px 4px #000;pointer-events:none;z-index:2}
 #subtxt.edit{pointer-events:auto;cursor:grab;outline:1px dashed #fff9;outline-offset:4px;touch-action:none;z-index:6}
 
@@ -268,12 +263,6 @@ body.embed header,body.embed .share,body.embed #close{display:none}
 body.embed .stage{max-width:none;padding:0}
 body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:auto;border-radius:0}
 
-/* bouton Qualité : en haut à droite, sous Cast / Signaler / Fermer, sur mobile et tablette */
-#qtop{position:absolute;top:58px;right:48px;display:none}
-#qtop .ab{background:transparent;padding:6px 10px;font-size:13px;gap:6px;max-width:62vw}
-#qtop .ab svg{width:20px;height:20px;flex:none}
-#qtop #ql{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(pointer:coarse),(max-width:640px){#qtop{display:block}}
 @media(max-width:640px){
   .sub{grid-template-columns:1fr auto}.sub input:nth-child(2){grid-column:1/-1;order:3}
   .copy{grid-template-columns:1fr}
@@ -283,8 +272,6 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
   .bw{left:6px}.bw.vw{left:auto;right:6px}.ib{width:42px;height:42px}
   .card{flex-direction:column;gap:16px}
   #pipb{display:none}
-  .card{padding:22px 20px;gap:22px 30px;flex-wrap:wrap}.card.has-x{padding-right:52px}
-  .sec{min-width:130px}.sec h4{font-size:18px;margin-bottom:8px}.it{font-size:15px;padding:9px 10px 9px 32px}.it.on::before{left:8px}
 }
 </style>
 </head>
@@ -310,6 +297,11 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
   <div class="wrap">
     <h1>Colle un lien .m3u8, la lecture démarre ici.</h1>
     <p class="lead">Lecteur HLS avec sous-titres, Chromecast et code embed qui garde la lecture dans ce lecteur.</p>
+    <div style="margin:0 0 22px">
+      <button type="button" class="ghost" id="openLocal" style="font-size:16px;padding:12px 18px">📁 Ouvrir des fichiers vidéo (hors ligne)</button>
+      <input type="file" id="localIn" accept="video/*,.mkv,.mp4,.m4v,.mov,.webm,.avi,.ogv,.srt,.vtt" multiple hidden>
+      <p style="color:var(--mu);font-size:13px;margin:8px 0 0">Choisis une ou plusieurs vidéos de ton appareil (et, si tu veux, leurs sous-titres .srt/.vtt avec le même nom). Aucune connexion nécessaire.</p>
+    </div>
     <form id="f">
       <label>Lien du flux (.m3u8)
         <input type="url" id="src" placeholder="https://exemple.com/video/master.m3u8" required autocomplete="off">
@@ -385,7 +377,6 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
       <div id="hit"></div>
       <div class="fb l" id="fbl"></div><div class="fb r" id="fbr"></div>
       <div id="spin"></div>
-      <div id="ldr" aria-hidden="true"><div class="ldt" id="ldt"></div><div class="ldb"><i></i></div></div>
       <div id="subtxt" hidden></div>
       <div id="pz" aria-live="polite">
         <span class="pz1">Vous regardez</span>
@@ -414,9 +405,9 @@ body.embed .player{position:fixed;inset:0;width:100%;height:100%;aspect-ratio:au
           <span class="mark" aria-hidden="true">M</span><div class="tt"><span id="ttl"></span><button class="ab" id="eb2" hidden><span data-i="eps"></span>Épisodes</button></div>
           <button class="ib" id="cast" hidden aria-label="Diffuser sur un appareil" data-i="cast"></button>
           <button class="ib" id="pipb" aria-label="Picture-in-picture" data-i="pip"></button>
+          <button class="ib" id="rpb" aria-label="Signaler un problème" title="Signaler un problème" data-i="flag"></button>
           <button class="ib" id="close" aria-label="Fermer" data-i="x"></button>
         </div>
-        <div id="qtop"></div>
 
         <div class="bw" id="bw" aria-label="Luminosité"><span data-i="sun"></span><div class="bt"><i id="bf"></i></div></div>
 
@@ -541,7 +532,8 @@ function savePos(force){
   if(v.ended||d-t<Math.min(60,d*0.04))putPos(cur.src,null);
   else if(t>=10)putPos(cur.src,{t:Math.floor(t),d:Math.floor(d),u:n});
 }
-let bootT,switching=false,hls=null,cur=null,ext=[],curSub=null,drag=false,idleT,locked=false,toastT,unlockT;
+const LOCALS={};
+let switching=false,hls=null,cur=null,ext=[],curSub=null,drag=false,idleT,locked=false,toastT,unlockT;
 
 /* ---------- langues : raccourcis (FR, EN, fr frc…) ---------- */
 const LANGS=[
@@ -746,6 +738,7 @@ function libAdd(items){
   try{localStorage.setItem(LIBK,JSON.stringify(m))}catch(e){}
 }
 function libQueue(c){
+  if(c.local)return[];
   const i=epInfo(c.title||guessTitle(c.src));if(!i)return[];
   const m=libGet(),seen=new Set();
   return Object.keys(m).map(src=>{const v=typeof m[src]==='string'?{t:m[src],c:[]}:m[src];return{src,title:v.t,subs:v.c||[],intro:v.i||'',outro:v.o||'',i:epInfo(v.t)}})
@@ -808,7 +801,7 @@ $('#batchFile').onchange=async e=>{
 let viewT=null,viewSent=false;
 const vid=(()=>{const r=()=>(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));try{let x=localStorage.getItem('flux-vid');if(!x){x=r();localStorage.setItem('flux-vid',x)}return x}catch(e){return r()}})();
 function sendView(){
-  if(viewSent||!cur)return;viewSent=true;
+  if(viewSent||!cur||cur.local)return;viewSent=true;
   fetch('/api/view',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',vid}),keepalive:true}).catch(()=>{});
 }
 v.addEventListener('playing',()=>{clearTimeout(viewT);viewT=setTimeout(()=>{if(!v.paused)sendView()},5000)});
@@ -827,12 +820,12 @@ v.addEventListener('timeupdate',()=>{
 });
 ['pause','seeking','seeked','waiting','ended'].forEach(n=>v.addEventListener(n,()=>{wLast=null}));
 function liveBody(leave){return JSON.stringify({src:cur.src,title:cur.title||'',vid,sid,leave:!!leave,sec:takeSec()})}
-function liveBeat(){if(!cur||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
-function liveLeave(){clearInterval(liveI);liveI=null;if(!cur)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
-v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,30000)});
+function liveBeat(){if(!cur||cur.local||v.paused||v.ended)return;fetch('/api/live',{method:'POST',headers:{'Content-Type':'application/json'},body:liveBody(),keepalive:true}).catch(()=>{})}
+function liveLeave(){clearInterval(liveI);liveI=null;if(!cur||cur.local)return;try{navigator.sendBeacon('/api/live',new Blob([liveBody(true)],{type:'application/json'}))}catch(e){}}
+v.addEventListener('playing',()=>{liveBeat();if(!liveI)liveI=setInterval(liveBeat,15000)});
 v.addEventListener('pause',liveLeave);v.addEventListener('ended',liveLeave);
 window.addEventListener('pagehide',liveLeave);
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&!cur.local&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
 
 /* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
 const PASS_HASH='5d9bf37fb2496023808138516349da5d5bfba15806349e75822b6190dfe17698';
@@ -865,15 +858,13 @@ window.addEventListener('popstate',route);
 
 /* ---------- lecture ---------- */
 function destroy(){
-  slowClear();
   if(hls){hls.destroy();hls=null}
   v.pause();v.removeAttribute('src');v.querySelectorAll('track').forEach(t=>t.remove());v.load();
   ext=[];curSub=null;sset.delay=0;closeModal();$('#err').hidden=true;$('#qb').hidden=true;setLock(false);pvKill();
 }
 function start(src,title,subs,queue,intro,outro,quals){
-  if(cur&&wSec>=1)liveLeave();wLast=null;slowPlayed=false;slowArm(true);
-  cur={src,title,subs,quals:quals||[],qi:-1,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
-  $('#ldt').textContent=title||'';pl.classList.add('boot');
+  if(cur&&wSec>=1)liveLeave();wLast=null;
+  cur={local:!!LOCALS[src],src,title,subs,quals:quals||[],qi:-1,q:queue||[],intro:intro||'',introT:introT(intro),outro:outro||'',outroT:outroT(outro)};viewSent=false;$('#skp').hidden=true;$('#sko').hidden=true;pvKill();
   sid=Math.random().toString(36).slice(2,10)+Date.now().toString(36);
   nxOff=false;pl.classList.remove('end','psd');$('#nx').hidden=true;$('#rs').hidden=true;clearTimeout(rsT);
   const rp=getPos(src),pos=rp&&rp.t>10?rp.t:0;
@@ -884,7 +875,8 @@ function start(src,title,subs,queue,intro,outro,quals){
   if(pos)showResume(pos);
   applyCachedFolder(cur);
   if(!cur.ep){if(!cur.q.length)cur.q=libQueue(cur);if(!cur.q.length)guessNext(cur)}
-  if(window.Hls&&Hls.isSupported())initHls(pos,-1,true);
+  if(cur.local){if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});v.src=LOCALS[src].url;v.play().catch(()=>{})}
+  else if(window.Hls&&Hls.isSupported())initHls(pos,-1,true);
   else if(v.canPlayType('application/vnd.apple.mpegurl')){
     if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});
     v.src=src;v.play().catch(()=>{});
@@ -898,6 +890,7 @@ function epBump(str,toSeason){
   return str.replace(/([sS])(\d{1,3})([eE])(\d{1,4})/,(m,a,sn,b,en)=>a+(toSeason?String(+sn+1).padStart(sn.length,'0'):sn)+b+(toSeason?String(1).padStart(en.length,'0'):String(+en+1).padStart(en.length,'0')));
 }
 async function guessNext(c){
+  if(c.local)return;
   if(!EPRE.test(c.src))return;
   for(const toS of [false,true]){
     const cand=epBump(c.src,toS);if(cand===c.src)continue;
@@ -912,27 +905,21 @@ async function guessNext(c){
     }catch(e){}
   }
 }
-const playUrl=()=>cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].url:cur.src;
-const qbVis=()=>{$('#qb').hidden=!cur||((!hls||hls.levels.length<2)&&!cur.quals.length&&document.body.classList.contains('embed'))};
+const canUrl=()=>!document.body.classList.contains('embed')&&!(cur&&cur.local);
+const playUrl=()=>cur.local?LOCALS[cur.src].url:cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].url:cur.src;
+const qbVis=()=>{$('#qb').hidden=!cur||cur.local||((!hls||hls.levels.length<2)&&!cur.quals.length&&document.body.classList.contains('embed'))};
 /* changer de qualité = relancer le flux (autre lien) à la même position */
 function reloadSrc(msg){
   const t=v.currentTime,was=!v.paused,a=hls?hls.audioTrack:-1;
-  switching=true;pl.classList.add('wait','boot');toast(msg);
+  switching=true;pl.classList.add('wait');toast(msg);
   if(hls)initHls(t,a,was);
   else{v.src=playUrl();v.addEventListener('loadedmetadata',()=>{v.currentTime=t},{once:true});if(was)v.play().catch(()=>{})}
   setTimeout(()=>{switching=false},10000);
 }
 function setQual(i){if(!cur||cur.qi===i)return;cur.qi=i;reloadSrc('Changement de qualité…');qLabel()}
-/* hls.js ne réessaie jamais les erreurs HTTP 4xx : un simple 429 (serveur qui limite le débit) coupait le film.
-   On réessaie 429/408 avec une attente croissante (2 s, 4 s, 8 s, puis 15 s max). */
-const retryOn=(cfg,n,tmo,resp,retry)=>{const c=resp&&typeof resp==='object'?resp.code:resp;return !!retry||(n<cfg.maxNumRetry&&(c===429||c===408))};
-const lPol=(ttfb,load,tmoN,errN)=>({default:{maxTimeToFirstByteMs:ttfb,maxLoadTimeMs:load,timeoutRetry:{maxNumRetry:tmoN,retryDelayMs:0,maxRetryDelayMs:0},errorRetry:{maxNumRetry:errN,retryDelayMs:2000,maxRetryDelayMs:15000,shouldRetry:retryOn}}});
 function initHls(pos,aud,play){
-  slowArm(true);
   if(hls){hls.destroy();hls=null}
-  const H=hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1,
-    manifestLoadPolicy:lPol(Infinity,20000,2,4),playlistLoadPolicy:lPol(10000,20000,2,6),fragLoadPolicy:lPol(10000,120000,4,10)});
-  let netRec=0;H.on(Hls.Events.FRAG_LOADED,()=>{netRec=0});
+  hls=new Hls({enableWebVTT:true,enableIMSC1:true,enableCEA708Captions:true,startPosition:pos>0?pos:-1});
   hls.loadSource(playUrl());hls.attachMedia(v);
   if(aud>=0)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{hls.audioTrack=aud});
   else if(prefs.audio)hls.once(Hls.Events.AUDIO_TRACKS_UPDATED,()=>{const k=hls.audioTracks.findIndex(t=>sameLab(t.name||t.lang||'',prefs.audio));if(k>=0&&hls.audioTrack!==k)hls.audioTrack=k});
@@ -948,14 +935,7 @@ function initHls(pos,aud,play){
     if(!d.fatal){if(switching)toast('Erreur audio : '+d.details);return}
     if(d.type===Hls.ErrorTypes.MEDIA_ERROR){const n=Date.now();if(n-lastRec<3000)hls.swapAudioCodec();lastRec=n;hls.recoverMediaError();return}
     const code=d.response&&d.response.code;
-    if(code===429)pvFail=true; /* on coupe aussi l'aperçu au survol, qui ajoute des requêtes sur le même serveur */
-    if(d.type===Hls.ErrorTypes.NETWORK_ERROR&&H.levels&&H.levels.length&&![401,403,404].includes(code)&&netRec<6){
-      netRec++;pl.classList.add('wait');
-      setTimeout(()=>{if(hls===H&&$('#err').hidden)H.startLoad(-1)},Math.min(3000*netRec,15000));
-      return;
-    }
-    const hint=code===429?'Le serveur du flux limite le nombre de requêtes (429) : trop de lectures en même temps ou trop rapides. Réessaie dans un instant.'
-      :code===401||code===403?'Accès refusé par le serveur du flux (lien expiré, protégé ou limité à une seule connexion).'
+    const hint=code===401||code===403?'Accès refusé par le serveur du flux (lien expiré, protégé ou limité à une seule connexion).'
       :code===404?'Lien introuvable (404) : vérifie le lien .m3u8.'
       :code>=500?'Le serveur du flux a une erreur ('+code+').'
       :d.details==='manifestParsingError'?"Le fichier .m3u8 n'est pas une liste de lecture valide."
@@ -969,27 +949,11 @@ function setAudio(i){
   if(!hls||hls.audioTrack===i)return;
   {const t=hls.audioTracks[i];if(t)savePref('audio',t.name||t.lang||'')}
   const t=v.currentTime,was=!v.paused;
-  switching=true;pl.classList.add('wait','boot');toast('Changement de langue…');
+  switching=true;pl.classList.add('wait');toast('Changement de langue…');
   initHls(t,i,was);
   setTimeout(()=>{switching=false},10000);
 }
-let lastAutoErr='';
-function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait','boot');
-  /* signalement automatique : tu vois l'erreur dans les stats sans que le spectateur ait à cliquer */
-  autoReport(t)}
-function autoReport(t,force){
-  try{const k=(cur&&cur.src||'')+'|'+t;if(cur&&cur.src&&(force||k!==lastAutoErr)){lastAutoErr=k;fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:cur.src,title:cur.title||'',kind:'Erreur auto',msg:t,pos:v.currentTime||0,vid}),keepalive:true}).catch(()=>{})}}catch(e){}}
-/* chargement trop long : si le lecteur reste en attente (démarrage ou coupure) plus de 20 s, on envoie un signalement auto, sans rien afficher au spectateur */
-const SLOW_MS=20000;let slowT=null,slowDone=false,slowPlayed=false;
-function slowClear(){clearTimeout(slowT);slowT=null}
-function slowArm(reset){if(reset){slowClear();slowDone=false}if(slowT||slowDone)return;slowT=setTimeout(slowFire,SLOW_MS)}
-function slowFire(){
-  slowT=null;
-  if(!cur||slowDone||!pl.classList.contains('wait')||!$('#err').hidden)return;
-  slowDone=true;
-  const diag=hls?(hls.levels&&hls.levels.length?'niveau '+hls.currentLevel+'/'+hls.levels.length:'manifeste non chargé'):'lecture native';
-  autoReport('⏱ Chargement trop long (+'+(SLOW_MS/1000)+' s) '+(slowPlayed?'en cours de lecture (buffering)':'au démarrage')+' · '+diag+' · readyState '+v.readyState+', réseau '+v.networkState,true);
-}
+function fail(t){$('#errT').textContent=t;$('#err').hidden=false;pl.classList.remove('wait')}
 $('#retry').onclick=()=>{if(cur){const c=cur;destroy();start(c.src,c.title,c.subs,c.q,c.intro,c.outro,c.quals)}};
 
 /* parse un .vtt/.srt nous-mêmes : hls.js vide les pistes <track> quand on change d'audio,
@@ -1165,7 +1129,7 @@ function secs(k){
   }
   if(k==='speed')return[{t:'Vitesse de lecture',items:RATES.map(r=>({l:r===1?'Normale':r+'×',on:v.playbackRate===r,f:()=>{v.playbackRate=r}}))}];
   const lv=hls?hls.levels:[],out=[];
-  if(cur.quals.length)out.push({t:'Liens de qualité',items:[{l:cur.ml||'Lien principal',on:cur.qi<0,close:true,f:()=>setQual(-1)}].concat(cur.quals.map((x,i)=>({l:x.label,on:cur.qi===i,close:true,f:()=>setQual(i)})))});
+  if(cur.quals.length)out.push({t:'Liens de qualité',items:[{l:'Lien principal',on:cur.qi<0,close:true,f:()=>setQual(-1)}].concat(cur.quals.map((x,i)=>({l:x.label,on:cur.qi===i,close:true,f:()=>setQual(i)})))});
   if(hls&&lv.length>1)out.push({t:cur.quals.length?'Qualité automatique du flux':'Qualité',items:[{l:'Auto',on:hls.autoLevelEnabled,f:()=>{hls.currentLevel=-1;qLabel()}}].concat(lv.map((x,i)=>({l:lvName(x),on:!hls.autoLevelEnabled&&hls.currentLevel===i,f:()=>{hls.currentLevel=i;qLabel()}})).reverse())});
   if(!document.body.classList.contains('embed'))out.push({t:'Réglages',items:[{l:'Modifier les liens de qualité…',go:'qedit'}]});
   return out;
@@ -1173,8 +1137,6 @@ function secs(k){
 function qEditPanel(){
   const c=$('#card');c.innerHTML='';
   const d=el('div','sec addsub');d.append(el('h4','','Liens de qualité'));
-  const ml=el('input');ml.type='text';ml.placeholder='Lien principal';ml.value=cur.ml||'';ml.maxLength=60;ml.setAttribute('aria-label','Nom de la qualité du lien principal');
-  const mlw=el('label','shint','Nom de la qualité du lien principal (ex. 1080p)');mlw.style.cssText='display:grid;gap:6px;margin-bottom:8px';mlw.append(ml);d.append(mlw);
   const rows=el('div');rows.style.cssText='display:grid;gap:8px';
   cur.quals.forEach((x,i)=>qRow(rows,x.label,x.url,String(i)));if(!cur.quals.length)qRow(rows);
   const ad=el('button','ghost','Ajouter une qualité');ad.type='button';ad.onclick=()=>qRow(rows);
@@ -1184,16 +1146,14 @@ function qEditPanel(){
     const list=[...rows.children].map(r=>{const i=r.querySelectorAll('input');return{label:i[0].value.trim()||'Qualité',url:i[1].value.trim(),o:r.dataset.o}}).filter(x=>x.url);
     cur.quals=list.map(x=>({label:x.label,url:full(x.url)}));
     cur.qi=old>=0?list.findIndex(x=>x.o===String(old)):-1;
-    cur.ml=ml.value.trim().slice(0,60);
     refreshShare();
-    if(!document.body.classList.contains('embed'))saveMeta([{src:cur.src,mainLabel:cur.ml||'',quals:cur.quals.map(q=>({l:q.label,u:q.url}))}]).catch(()=>{}); // enregistré dans la bibliothèque
-    if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
+    if(canUrl()){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
     qbVis();qLabel();
     if(playUrl()!==prev)reloadSrc('Changement de qualité…');
     openModal('q');
   };
   const bk=el('button','ghost','← Retour');bk.type='button';bk.onclick=()=>openModal('q');
-  d.append(rows,ad,ap,el('p','shint','Chaque qualité est un lien .m3u8. Ils sont ajoutés au lien de partage et au code embed, et enregistrés dans la bibliothèque (valables pour les liens déjà partagés).'),bk);
+  d.append(rows,ad,ap,el('p','shint','Chaque qualité est un lien .m3u8. Ils sont ajoutés au lien de partage et au code embed.'),bk);
   c.append(d);
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   $('#modal').hidden=false;
@@ -1224,12 +1184,8 @@ $('#modal').onclick=e=>{if(e.target.id==='modal')closeModal()};
 $('#cc').onclick=()=>openModal('cc');
 $('#sp').onclick=()=>openModal('speed');
 $('#qb').onclick=()=>openModal('q');
-/* mobile : le bouton Qualité passe en haut à droite (sous Signaler / Cast), sinon il reste dans la barre du bas */
-const qMove=matchMedia('(pointer:coarse),(max-width:640px)');
-const qPlace=()=>{const b=$('#qb');if(qMove.matches){if(b.parentNode!==$('#qtop'))$('#qtop').append(b)}else if(b.parentNode===$('#qtop'))$('#sp').after(b)};
-if(qMove.addEventListener)qMove.addEventListener('change',qPlace);qPlace();
 v.addEventListener('ratechange',()=>{$('#spl').textContent='Vitesse ('+v.playbackRate+'×)'});
-function qLabel(){if(!cur)return;const n=cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].label:(hls&&hls.levels.length>1?(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{})):(cur.quals.length?(cur.ml||'Principal'):'Auto'));$('#ql').textContent='Qualité ('+n+')'}
+function qLabel(){if(!cur)return;const n=cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].label:(hls&&hls.levels.length>1?(hls.autoLevelEnabled?'Auto':lvName(hls.levels[hls.currentLevel]||{})):(cur.quals.length?'Principal':'Auto'));$('#ql').textContent='Qualité ('+n+')'}
 
 /* ---------- contrôles ---------- */
 const fmt=s=>{if(!isFinite(s))return'Direct';s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=String(s%60).padStart(2,'0');return h?`${h}:${String(m).padStart(2,'0')}:${c}`:`${m}:${c}`};
@@ -1323,15 +1279,10 @@ function tsync(){
 v.addEventListener('play',sync);v.addEventListener('pause',sync);
 v.addEventListener('volumechange',vsync);
 ['timeupdate','progress','durationchange','loadedmetadata'].forEach(n=>v.addEventListener(n,tsync));
-v.addEventListener('waiting',()=>{pl.classList.add('wait');clearTimeout(bootT);bootT=setTimeout(()=>{if(pl.classList.contains('wait'))pl.classList.add('boot')},1500)});
-['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>clearTimeout(bootT)));
+v.addEventListener('waiting',()=>pl.classList.add('wait'));
 ['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
-['playing','canplay'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('boot')));
 v.addEventListener('loadstart',()=>pl.classList.add('wait'));
-v.addEventListener('waiting',()=>slowArm());v.addEventListener('loadstart',()=>slowArm());
-['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,slowClear));
-v.addEventListener('playing',()=>{slowPlayed=true;slowDone=false});
-v.addEventListener('error',()=>{if(!hls&&v.src)fail('Impossible de lire ce flux.')});
+v.addEventListener('error',()=>{if(!hls&&v.src)fail(cur&&cur.local?"Ce fichier n'est pas lisible par le navigateur (MKV/AVI ou audio DTS/AC3 souvent refusés). Convertis-le en MP4 (H.264 + AAC) ou ouvre-le avec VLC.":'Impossible de lire ce flux.')});
 sync();vsync();
 /* réglages mémorisés : volume, son coupé, vitesse, luminosité */
 if(typeof prefs.vol==='number')v.volume=Math.max(0,Math.min(1,prefs.vol));
@@ -1492,7 +1443,7 @@ function applyFolder(c,name,items){
   if(i<0||items.length<2)return;
   c.folder=name;c.ep=items;c.q=items.slice(i+1);
 }
-function applyCachedFolder(c){c.ep=null;if(FOLD.items)applyFolder(c,FOLD.name,FOLD.items)}
+function applyCachedFolder(c){c.ep=null;if(c.local)return;if(FOLD.items)applyFolder(c,FOLD.name,FOLD.items)}
 async function loadFolder(c,name){
   try{
     let items;
@@ -1558,11 +1509,13 @@ function reportPanel(){
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   m.hidden=false;
 }
+$('#rpb').onclick=()=>openModal('report');
 $('#errrep').onclick=()=>{rpPreset={kind:'Ne démarre pas',msg:'Erreur affichée : '+($('#errT').textContent||'')};openModal('report')};
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
 const saveMeta=items=>fetch('/api/meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
 async function loadMeta(c){
+  if(c.local)return;
   try{
     const r=await fetch('/api/meta?src='+encodeURIComponent(c.src),{cache:'no-store'});
     if(!r.ok)return;
@@ -1571,7 +1524,7 @@ async function loadMeta(c){
     /* lien modifié dans la bibliothèque : on bascule sur le nouveau */
     if(typeof m.r==='string'&&m.r&&m.r!==c.src){liveLeave();destroy();start(m.r,c.title,c.subs,c.q,c.intro,c.outro);return}
     /* vidéo inconnue de la bibliothèque : on l'y enregistre (sans toucher aux liens des spectateurs d'un embed) */
-    if(!Object.keys(m).length&&!document.body.classList.contains('embed'))saveMeta([Object.assign({src:c.src,title:c.title||guessTitle(c.src)},c.quals.length?{quals:c.quals.map(q=>({l:q.label,u:q.url}))}:{})]).catch(()=>{});
+    if(!Object.keys(m).length&&!document.body.classList.contains('embed'))saveMeta([{src:c.src,title:c.title||guessTitle(c.src)}]).catch(()=>{});
     if(typeof m.i==='string'){c.intro=m.i;c.introT=introT(m.i)}
     if(typeof m.o==='string'){c.outro=m.o;c.outroT=outroT(m.o)}
     if(m.t){c.title=m.t;$('#ttl').textContent=m.t;document.title=m.t+' – Flux'}
@@ -1580,15 +1533,6 @@ async function loadMeta(c){
       if(!x||!x.u||c.subs.some(y=>y.url===x.u))return;
       const sb={label:nl(x.l)||'Sous-titres',url:x.u};c.subs.push(sb);addExt(sb,c.subs.length===1);
     });
-    if(typeof m.ml==='string'){c.ml=m.ml;qLabel()}
-    /* qualités enregistrées dans la bibliothèque : elles remplacent celles du lien (donc modifiables pour les liens déjà partagés) */
-    if(Array.isArray(m.q)){
-      const prev=playUrl();
-      c.quals=m.q.filter(q=>q&&q.u).map(q=>({label:nl(q.l)||'Qualité',url:q.u}));
-      if(c.qi>=c.quals.length)c.qi=-1;
-      qbVis();qLabel();
-      if(playUrl()!==prev)reloadSrc('Changement de qualité…');
-    }
     refreshShare();fillEd();skpSync();
   }catch(e){}
 }
@@ -1596,6 +1540,7 @@ async function loadMeta(c){
 const rng=x=>x?x.split('-').map(n=>n===''?'':fmt(+n)).join('-'):'';
 function refreshShare(){
   if(!cur)return;
+  if(cur.local){['#lnk','#embu','#emb','#emb2'].forEach(i=>{$(i).value=''});return}
   const u=mk(cur.src,cur.title,cur.subs,true,qOf(cur),cur.intro,cur.outro,cur.quals);
   $('#lnk').value=mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals);
   $('#embu').value=u;
@@ -1610,7 +1555,7 @@ function applyEd(){
   if(!(iv&&!ni))Object.assign(cur,{intro:ni,introT:introT(ni)});
   if(!(ov&&!no))Object.assign(cur,{outro:no,outroT:outroT(no)});
   refreshShare();skpSync();mkSync();
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
+  if(canUrl()){try{history.replaceState(null,'',mk(cur.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro,cur.quals))}catch(e){}}
 }
 function markEd(inp,idx){
   const t=Math.round(v.currentTime),p=inp.value.split(/[-–—>]/).map(x=>x.trim());
@@ -1620,7 +1565,7 @@ function markEd(inp,idx){
 }
 $('#shI').onchange=$('#shO').onchange=applyEd;
 $('#shSave').onclick=async()=>{
-  if(!cur)return;const m=$('#shMsg');applyEd();if(m.textContent)return;
+  if(!cur||cur.local)return;const m=$('#shMsg');applyEd();if(m.textContent)return;
   try{
     const r=await saveMeta([{src:cur.src,title:cur.title||'',intro:cur.intro||'',outro:cur.outro||''}]);
     if(!r.ok)throw new Error(r.status);
@@ -1637,7 +1582,7 @@ const NX_T=20; /* secondes avant la fin : la carte "Épisode suivant" apparaît 
 function playItem(n,rest){
   liveLeave();destroy();
   start(n.src,n.title||guessTitle(n.src),n.subs||[],rest,n.intro||'',n.outro||'');
-  if(!document.body.classList.contains('embed')){try{history.replaceState(null,'',mk(n.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro))}catch(e){}}
+  if(canUrl()){try{history.replaceState(null,'',mk(n.src,cur.title,cur.subs,false,qOf(cur),cur.intro,cur.outro))}catch(e){}}
 }
 function goNext(){if(hasNext())playItem(cur.q[0],cur.q.slice(1))}
 function nxSync(){
@@ -1791,6 +1736,33 @@ document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
 });
 
 route();
+
+/* ---------- fichiers vidéo locaux (fonctionne sans connexion) ---------- */
+async function openLocal(list){
+  const files=[...list],isV=f=>/^video\//.test(f.type)||/\.(mp4|m4v|mov|mkv|webm|avi|ogv|mpe?g|3gp|ts)$/i.test(f.name),isS=f=>/\.(srt|vtt)$/i.test(f.name);
+  const vids=files.filter(isV).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})),subf=files.filter(isS);
+  if(!vids.length){$('#msg').textContent='Aucune vidéo dans ta sélection.';return}
+  $('#msg').textContent='';
+  Object.keys(LOCALS).forEach(k=>{try{URL.revokeObjectURL(LOCALS[k].url);LOCALS[k].subs.forEach(x=>URL.revokeObjectURL(x.url))}catch(e){}delete LOCALS[k]});
+  const base=n=>n.replace(/\.[^.]+$/,''),subUrl=async f=>{const t=await f.text();return URL.createObjectURL(new Blob([/\.srt$/i.test(f.name)?'WEBVTT\n\n'+t.replace(/\r/g,'').replace(/(\d+:\d\d:\d\d),(\d{3})/g,'$1.$2'):t],{type:'text/vtt'}))};
+  const items=[];
+  for(const f of vids){
+    const key='local:'+f.name+'|'+f.size,bn=base(f.name).toLowerCase(),subs=[];
+    for(const sf of subf){const sb=base(sf.name);if(sb.toLowerCase().startsWith(bn)){try{subs.push({label:nl(sb.slice(bn.length).replace(/^[\s._-]+/,''))||'Sous-titres',url:await subUrl(sf)})}catch(e){}}}
+    if(vids.length===1&&!subs.length)for(const sf of subf){try{subs.push({label:nl(base(sf.name).split(/[.\s_-]+/).pop())||'Sous-titres',url:await subUrl(sf)})}catch(e){}}
+    const title=smartName(base(f.name))||base(f.name);
+    LOCALS[key]={url:URL.createObjectURL(f),subs};
+    items.push({src:key,title,subs});
+  }
+  destroy();document.body.classList.remove('embed');
+  $('#gate').hidden=true;$('#home').hidden=true;$('#watch').hidden=false;
+  start(items[0].src,items[0].title,items[0].subs,items.slice(1),'','',[]);
+}
+$('#openLocal').onclick=()=>$('#localIn').click();
+$('#localIn').onchange=e=>{const f=e.target.files;if(f&&f.length)openLocal(f);e.target.value=''};
+document.addEventListener('dragover',e=>{if(!$('#home').hidden)e.preventDefault()});
+document.addEventListener('drop',e=>{if(!$('#home').hidden&&e.dataTransfer&&e.dataTransfer.files.length){e.preventDefault();openLocal(e.dataTransfer.files)}});
+if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})});
 </script>
 </body>
 </html>
