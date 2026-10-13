@@ -875,7 +875,7 @@ function start(src,title,subs,queue,intro,outro,quals){
   if(pos)showResume(pos);
   applyCachedFolder(cur);
   if(!cur.ep){if(!cur.q.length)cur.q=libQueue(cur);if(!cur.q.length)guessNext(cur)}
-  if(cur.local){if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});v.src=LOCALS[src].url;v.play().catch(()=>{})}
+  if(cur.local){if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});v.src=LOCALS[src].url;v.play().catch(()=>{});embLocal(cur)}
   else if(window.Hls&&Hls.isSupported())initHls(pos,-1,true);
   else if(v.canPlayType('application/vnd.apple.mpegurl')){
     if(pos)v.addEventListener('loadedmetadata',()=>{v.currentTime=pos},{once:true});
@@ -1038,7 +1038,7 @@ function addSubPanel(){
 function subList(){
   const L=[];
   if(hls)hls.subtitleTracks.forEach((t,i)=>L.push({name:nl(t.name||t.lang||'Piste '+(i+1)),i}));
-  else[...v.textTracks].filter(t=>!ext.some(e=>e.track===t)&&/subtitles|captions/.test(t.kind)).forEach(t=>L.push({name:nl(t.label||t.language||'Sous-titres'),track:t}));
+  else if(!(cur&&cur.embSubs))[...v.textTracks].filter(t=>!ext.some(e=>e.track===t)&&/subtitles|captions/.test(t.kind)).forEach(t=>L.push({name:nl(t.label||t.language||'Sous-titres'),track:t}));
   return L.concat(ext);
 }
 function setSub(it){
@@ -1122,7 +1122,7 @@ function secs(k){
   if(k==='cc'){
     const a=hls?hls.audioTracks:[];
     return[
-      {t:'Audio',items:a.length>1?a.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,close:true,f:()=>setAudio(i)})):[]},
+      {t:'Audio',items:a.length>1?a.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,close:true,f:()=>setAudio(i)})):localAudio()},
       {t:'Sous-titres',items:[{l:'Désactivés',on:!curSub,f:()=>{setSub(null);savePref('sub','')}}].concat(subList().map(it=>({l:it.name,on:isOn(it),f:()=>{setSub(it);savePref('sub',it.name)}})))},
       {t:'Réglages',items:[{l:'Ajouter mes sous-titres…',go:'addsub'},{l:'Paramètres des sous-titres…',go:'sub'}]}
     ];
@@ -1737,6 +1737,260 @@ document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=async()=>{
 
 route();
 
+/* ---------- pistes intégrées (MP4 / MKV) : lecture de l'en-tête du fichier, sans tout charger ---------- */
+function embReader(f,csz){
+  let cs=0,ce=0,cb=null;
+  return{async get(o,n){
+    if(o<0||o>=f.size)return new Uint8Array(0);
+    n=Math.min(n,f.size-o);
+    if(cb&&o>=cs&&o+n<=ce)return cb.subarray(o-cs,o-cs+n);
+    const len=Math.min(f.size-o,Math.max(csz,n));
+    cb=new Uint8Array(await f.slice(o,o+len).arrayBuffer());cs=o;ce=o+len;
+    return cb.subarray(0,n);
+  }};
+}
+const embU8=async(f,a,b)=>new Uint8Array(await f.slice(a,b).arrayBuffer());
+const embStr=(b,s,e)=>{let t=new TextDecoder('utf-8').decode(b.subarray(s,e));return t.replace(/\0+$/,'')};
+const embNum=(b,s,e)=>{let n=0;for(let i=s;i<e;i++)n=n*256+b[i];return n};
+const embDur=(c,s)=>({n:c,s});
+/* --- Matroska / WebM --- */
+function embVint(b,p,isId){
+  const x=b[p];if(x===undefined||x===0)return null;
+  let len=1,mask=0x80;while(!(x&mask)){len++;mask>>=1}
+  if(p+len>b.length)return null;
+  let val=isId?x:(x&(mask-1)),ones=!isId&&(x&(mask-1))===mask-1;
+  for(let i=1;i<len;i++){val=val*256+b[p+i];if(b[p+i]!==255)ones=false}
+  return{len,val,unk:ones};
+}
+function embWalk(b,s,e,fn){
+  while(s<e){
+    const id=embVint(b,s,true);if(!id)return;
+    const sz=embVint(b,s+id.len,false);if(!sz)return;
+    const bs=s+id.len+sz.len,be=sz.unk?e:Math.min(e,bs+sz.val);
+    fn(id.val,bs,be);s=be;
+  }
+}
+async function mkvProbe(f){
+  const R=embReader(f,1<<20);
+  let h=await R.get(0,32),a=embVint(h,0,true),s=a&&embVint(h,a.len,false);
+  if(!a||!s)return null;
+  let pos=a.len+s.len+s.val;
+  h=await R.get(pos,16);a=embVint(h,0,true);s=a&&embVint(h,a.len,false);
+  if(!a||!s||a.val!==0x18538067)return null;
+  pos+=a.len+s.len;
+  const info={kind:'mkv',scale:1e6,audio:[],subs:[],first:null,tr:{}};
+  for(let k=0;k<300&&pos<f.size;k++){
+    const hb=await R.get(pos,16),id=embVint(hb,0,true),sz=id&&embVint(hb,id.len,false);
+    if(!id||!sz)break;
+    const body=pos+id.len+sz.len;
+    if(id.val===0x1F43B675){info.first=pos;break}
+    if(sz.unk)break;
+    if(id.val===0x1549A966||id.val===0x1654AE6B){
+      const b=await embU8(f,body,body+sz.val);
+      if(id.val===0x1549A966)embWalk(b,0,b.length,(i,bs,be)=>{if(i===0x2AD7B1)info.scale=embNum(b,bs,be)||1e6});
+      else embWalk(b,0,b.length,(i,bs,be)=>{
+        if(i!==0xAE)return;
+        const t={num:0,type:0,codec:'',lang:'eng',name:'',forced:false,priv:null,ch:0};
+        embWalk(b,bs,be,(j,s2,e2)=>{
+          if(j===0xD7)t.num=embNum(b,s2,e2);else if(j===0x83)t.type=embNum(b,s2,e2);
+          else if(j===0x86)t.codec=embStr(b,s2,e2);else if(j===0x22B59C)t.lang=embStr(b,s2,e2)||'eng';
+          else if(j===0x22B59D){const l=embStr(b,s2,e2).split('-')[0];if(l)t.lang=l}
+          else if(j===0x536E)t.name=embStr(b,s2,e2);else if(j===0x55AA)t.forced=!!embNum(b,s2,e2);
+          else if(j===0x63A2)t.priv=b.slice(s2,e2);
+          else if(j===0xE1)embWalk(b,s2,e2,(q,s3,e3)=>{if(q===0x9F)t.ch=embNum(b,s3,e3)});
+        });
+        if(/forc/i.test(t.name))t.forced=true;
+        if(t.type===2)info.audio.push({lang:t.lang,name:t.name,codec:embCodec(t.codec),ch:t.ch});
+        else if(t.type===17){
+          const text=/^S_TEXT\/(UTF8|ASCII|ASS|SSA|WEBVTT)$/.test(t.codec);
+          const x={lang:t.lang,name:t.name,forced:t.forced,text,codec:t.codec,num:t.num};
+          info.subs.push(x);info.tr[t.num]=x;
+        }
+      });
+    }
+    pos=body+sz.val;
+  }
+  return info;
+}
+function embCodec(c){
+  c=String(c||'');
+  const m={'A_AAC':'AAC','A_AC3':'AC3','A_EAC3':'E-AC3','A_OPUS':'Opus','A_VORBIS':'Vorbis','A_FLAC':'FLAC','A_MPEG/L3':'MP3','mp4a':'AAC','ac-3':'AC3','ec-3':'E-AC3','Opus':'Opus','fLaC':'FLAC','.mp3':'MP3'};
+  if(m[c])return m[c];if(/^A_DTS/.test(c)||/^dts/i.test(c))return'DTS';if(/^A_TRUEHD/.test(c)||c==='mlpa')return'TrueHD';return'';
+}
+const embAssText=d=>{
+  const p=d.split(',');if(p.length<9)return'';
+  let t=p.slice(8).join(',');
+  if(/\\p[1-9]/.test(t))return'';
+  return t.replace(/\{[^}]*\}/g,'').replace(/\\[Nn]/g,'\n').replace(/\\h/g,' ').trim();
+};
+async function mkvExtract(f,info,stop){
+  const want={};info.subs.filter(x=>x.text).forEach(x=>{want[x.num]=x;x.cues=[]});
+  if(info.first==null||!Object.keys(want).length)return;
+  const R=embReader(f,4<<20),dec=new TextDecoder('utf-8');let pos=info.first,clTs=0,last=null,n=0;
+  while(pos<f.size){
+    if(++n%200===0&&stop())return;
+    const hb=await R.get(pos,16),id=embVint(hb,0,true),sz=id&&embVint(hb,id.len,false);
+    if(!id||!sz)break;
+    const body=pos+id.len+sz.len,I=id.val;
+    if(I===0x1F43B675||I===0xA0){pos=body;continue}
+    if(I===0xE7){const b=await R.get(body,sz.val);clTs=embNum(b,0,b.length);pos=body+sz.val;continue}
+    if(I===0xA3||I===0xA1){
+      const hd=await R.get(body,Math.min(sz.val,12)),tn=embVint(hd,0,false);
+      if(tn&&want[tn.val]){
+        const b=await R.get(body,sz.val);let rel=(b[tn.len]<<8)|b[tn.len+1];if(rel>=32768)rel-=65536;
+        const x=want[tn.val],raw=dec.decode(b.subarray(tn.len+3));
+        let text=/ASS|SSA/.test(x.codec)?embAssText(raw):raw;
+        text=text.replace(/\r/g,'').replace(/\n{2,}/g,'\n').trim();
+        last=null;
+        if(text){last={t:(clTs+rel)*info.scale/1e9,d:null,text};x.cues.push(last)}
+      }
+      pos=body+sz.val;continue;
+    }
+    if(I===0x9B){const b=await R.get(body,sz.val);if(last&&last.d==null)last.d=embNum(b,0,b.length)*info.scale/1e9;pos=body+sz.val;continue}
+    pos=sz.unk?body:body+sz.val;
+  }
+}
+/* --- MP4 / MOV --- */
+function* embBoxes(b,s,e){
+  while(s+8<=e){
+    const dv=new DataView(b.buffer,b.byteOffset+s,Math.min(16,e-s));
+    let sz=dv.getUint32(0),hl=8;const type=String.fromCharCode(b[s+4],b[s+5],b[s+6],b[s+7]);
+    if(sz===1&&e-s>=16){sz=Number(dv.getBigUint64(8));hl=16}else if(sz===0)sz=e-s;
+    if(sz<hl)return;if(s+sz>e)sz=e-s;
+    yield{type,s:s+hl,e:s+sz};s+=sz;
+  }
+}
+async function mp4Probe(f){
+  const R=embReader(f,1<<20);let pos=0,moov=null;
+  while(pos<f.size){
+    const h=await R.get(pos,16);if(h.length<8)break;
+    const dv=new DataView(h.buffer,h.byteOffset,h.byteLength);
+    let sz=dv.getUint32(0),hl=8;const type=String.fromCharCode(h[4],h[5],h[6],h[7]);
+    if(sz===1&&h.length>=16){sz=Number(dv.getBigUint64(8));hl=16}else if(sz===0)sz=f.size-pos;
+    if(sz<hl)break;
+    if(type==='moov'){if(sz-hl>300e6)return null;moov=await embU8(f,pos+hl,pos+sz);break}
+    pos+=sz;
+  }
+  if(!moov)return null;
+  const info={kind:'mp4',audio:[],subs:[],moov};
+  for(const bx of embBoxes(moov,0,moov.length)){
+    if(bx.type!=='trak')continue;
+    const t={lang:'und',h:'',codec:'',tsc:1000,stts:[],sizes:null,ssz:0,stsc:[],co:[]};
+    for(const m of embBoxes(moov,bx.s,bx.e)){
+      if(m.type!=='mdia')continue;
+      for(const x of embBoxes(moov,m.s,m.e)){
+        const dv=new DataView(moov.buffer,moov.byteOffset,moov.length);
+        if(x.type==='mdhd'){const v=moov[x.s];t.tsc=dv.getUint32(x.s+(v===1?20:12));const l=dv.getUint16(x.s+(v===1?32:20));t.lang=String.fromCharCode(((l>>10)&31)+96,((l>>5)&31)+96,(l&31)+96)}
+        else if(x.type==='hdlr')t.h=String.fromCharCode(moov[x.s+8],moov[x.s+9],moov[x.s+10],moov[x.s+11]);
+        else if(x.type==='minf')for(const y of embBoxes(moov,x.s,x.e)){
+          if(y.type!=='stbl')continue;
+          for(const z of embBoxes(moov,y.s,y.e)){
+            const c=dv.getUint32(z.s+4);
+            if(z.type==='stsd')t.codec=String.fromCharCode(moov[z.s+12],moov[z.s+13],moov[z.s+14],moov[z.s+15]);
+            else if(z.type==='stts'){for(let i=0;i<c;i++)t.stts.push([dv.getUint32(z.s+8+i*8),dv.getUint32(z.s+12+i*8)])}
+            else if(z.type==='stsz'){t.ssz=dv.getUint32(z.s+4);const n=dv.getUint32(z.s+8);t.n=n;if(!t.ssz){t.sizes=new Uint32Array(n);for(let i=0;i<n;i++)t.sizes[i]=dv.getUint32(z.s+12+i*4)}}
+            else if(z.type==='stsc'){for(let i=0;i<c;i++)t.stsc.push([dv.getUint32(z.s+8+i*12),dv.getUint32(z.s+12+i*12)])}
+            else if(z.type==='stco'){for(let i=0;i<c;i++)t.co.push(dv.getUint32(z.s+8+i*4))}
+            else if(z.type==='co64'){for(let i=0;i<c;i++)t.co.push(Number(dv.getBigUint64(z.s+8+i*8)))}
+          }
+        }
+      }
+    }
+    if(t.h==='soun')info.audio.push({lang:t.lang,name:'',codec:embCodec(t.codec),ch:0});
+    else if(/^(sbtl|subt|text)$/.test(t.h)){info.subs.push({lang:t.lang,name:'',forced:false,text:/^(tx3g|wvtt)$/.test(t.codec),codec:t.codec,t});}
+  }
+  return info;
+}
+async function mp4Extract(f,info,stop){
+  const dec=new TextDecoder('utf-8');
+  for(const x of info.subs){
+    if(!x.text||stop())continue;
+    const t=x.t,n=t.n||0;if(!n||!t.co.length||!t.stsc.length)continue;
+    const off=new Array(n),size=new Array(n);let si=0;
+    for(let c=0;c<t.co.length&&si<n;c++){
+      let spc=t.stsc[0][1];for(const e of t.stsc){if(e[0]<=c+1)spc=e[1];else break}
+      let o=t.co[c];
+      for(let k=0;k<spc&&si<n;k++){const sz=t.sizes?t.sizes[si]:t.ssz;off[si]=o;size[si]=sz;o+=sz;si++}
+    }
+    const start=new Array(n),dur=new Array(n);let tm=0,i=0;
+    for(const [cnt,d] of t.stts)for(let k=0;k<cnt&&i<n;k++,i++){start[i]=tm/t.tsc;dur[i]=d/t.tsc;tm+=d}
+    x.cues=[];
+    for(let a=0;a<n;a+=40){
+      if(stop())return;
+      const idx=[];for(let i=a;i<Math.min(n,a+40);i++)idx.push(i);
+      const bufs=await Promise.all(idx.map(i=>embU8(f,off[i],off[i]+size[i])));
+      idx.forEach((i,j)=>{
+        const b=bufs[j];let text='';
+        if(t.codec==='tx3g'){const l=(b[0]<<8)|b[1];text=dec.decode(b.subarray(2,2+l))}
+        else for(const bx of embBoxes(b,0,b.length))if(bx.type==='vttc')for(const p of embBoxes(b,bx.s,bx.e))if(p.type==='payl')text+=dec.decode(b.subarray(p.s,p.e));
+        text=text.replace(/\r/g,'').replace(/\n{2,}/g,'\n').trim();
+        if(text)x.cues.push({t:start[i],d:dur[i],text});
+      });
+    }
+  }
+}
+/* --- entrée --- */
+async function embProbe(f){
+  const h=await embU8(f,0,12);
+  if(h[0]===0x1A&&h[1]===0x45&&h[2]===0xDF&&h[3]===0xA3)return mkvProbe(f);
+  if(/^(ftyp|moov|mdat|free|wide|skip)$/.test(String.fromCharCode(h[4],h[5],h[6],h[7])))return mp4Probe(f);
+  return null;
+}
+const embClock=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=(s%60).toFixed(3).padStart(6,'0');return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+c};
+function embVtt(cues){
+  cues=cues.slice().sort((a,b)=>a.t-b.t);
+  return'WEBVTT\n\n'+cues.map((c,i)=>{
+    const nx=cues[i+1],end=c.d!=null?c.t+c.d:Math.min(nx?nx.t:1e9,c.t+4);
+    return embClock(c.t)+' --> '+embClock(Math.max(end,c.t+0.2))+'\n'+c.text.replace(/-->/g,'->')+'\n';
+  }).join('\n');
+}
+async function embExtract(f,info,stop){
+  if(info.kind==='mkv')await mkvExtract(f,info,stop);else await mp4Extract(f,info,stop);
+}
+
+/* branchement au lecteur : sous-titres et pistes audio du fichier local */
+const embLab=(lang,name,forced,i)=>{
+  const k=LA[plain(lang||'')];
+  if(k)return nl(lang+(forced?' forced':''));
+  return name||(lang&&lang!=='und'?String(lang).toUpperCase():'Piste '+(i+1));
+};
+async function embLocal(c){
+  const L=LOCALS[c.src];if(!L||!L.file)return;
+  try{
+    const info=await embProbe(L.file);if(cur!==c||!info)return;
+    c.lAudio=info.audio;
+    if(info.audio.length>1&&!(v.audioTracks&&v.audioTracks.length>1))toast('Ce fichier a '+info.audio.length+' pistes audio, mais ce navigateur ne peut lire que la première.');
+    const texts=info.subs.filter(x=>x.text);
+    if(!texts.length)return;
+    c.embSubs=true;
+    if(info.kind==='mkv'&&L.file.size>200e6)toast('Lecture des sous-titres intégrés…');
+    await embExtract(L.file,info,()=>cur!==c);
+    if(cur!==c)return;
+    let n=0;
+    texts.forEach((x,i)=>{
+      if(!x.cues||!x.cues.length)return;
+      let lab=embLab(x.lang,x.name,x.forced,i);
+      if(ext.some(e=>e.name===lab))lab+=' '+(i+1);
+      const url=URL.createObjectURL(new Blob([embVtt(x.cues)],{type:'text/vtt'}));
+      addExt({label:lab,url},false);n++;
+    });
+    if(n)toast(n+' piste'+(n>1?'s':'')+' de sous-titres intégrée'+(n>1?'s':'')+' trouvée'+(n>1?'s':''));
+  }catch(e){console.warn('pistes intégrées',e)}
+}
+const embAName=(x,t,i)=>{
+  const lang=(x&&x.lang)||(t&&t.language)||'';
+  let n=LA[plain(lang)]?nl(lang):((t&&t.label)||(x&&x.name)||(lang&&lang!=='und'?lang.toUpperCase():'Piste '+(i+1)));
+  if(x&&x.codec)n+=' · '+x.codec;
+  return n;
+};
+function localAudio(){
+  if(!cur||!cur.local)return[];
+  const at=v.audioTracks,info=cur.lAudio||[];
+  if(at&&at.length>1)return[...at].map((t,i)=>({l:embAName(info[i],t,i),on:t.enabled,close:true,f:()=>{for(let k=0;k<at.length;k++)at[k].enabled=(k===i)}}));
+  if(info.length>1)return info.map((x,i)=>({l:embAName(x,null,i),on:i===0,f:()=>toast("Ce navigateur ne peut pas changer la piste audio d'un fichier local.")}));
+  return[];
+}
+
 /* ---------- fichiers vidéo locaux (fonctionne sans connexion) ---------- */
 async function openLocal(list){
   const files=[...list],isV=f=>/^video\//.test(f.type)||/\.(mp4|m4v|mov|mkv|webm|avi|ogv|mpe?g|3gp|ts)$/i.test(f.name),isS=f=>/\.(srt|vtt)$/i.test(f.name);
@@ -1751,7 +2005,7 @@ async function openLocal(list){
     for(const sf of subf){const sb=base(sf.name);if(sb.toLowerCase().startsWith(bn)){try{subs.push({label:nl(sb.slice(bn.length).replace(/^[\s._-]+/,''))||'Sous-titres',url:await subUrl(sf)})}catch(e){}}}
     if(vids.length===1&&!subs.length)for(const sf of subf){try{subs.push({label:nl(base(sf.name).split(/[.\s_-]+/).pop())||'Sous-titres',url:await subUrl(sf)})}catch(e){}}
     const title=smartName(base(f.name))||base(f.name);
-    LOCALS[key]={url:URL.createObjectURL(f),subs};
+    LOCALS[key]={url:URL.createObjectURL(f),subs,file:f};
     items.push({src:key,title,subs});
   }
   destroy();document.body.classList.remove('embed');
