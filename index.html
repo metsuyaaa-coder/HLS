@@ -300,7 +300,9 @@ body.embed .player,body.local .player{position:fixed;inset:0;width:100%;height:1
     <div style="margin:0 0 22px">
       <button type="button" class="ghost" id="openLocal" style="font-size:16px;padding:12px 18px">📁 Ouvrir des fichiers vidéo (hors ligne)</button>
       <input type="file" id="localIn" accept="video/*,.mkv,.mp4,.m4v,.mov,.webm,.avi,.ogv,.srt,.vtt" multiple hidden>
-      <p style="color:var(--mu);font-size:13px;margin:8px 0 0">Choisis une ou plusieurs vidéos de ton appareil (et, si tu veux, leurs sous-titres .srt/.vtt avec le même nom). Aucune connexion nécessaire.</p>
+      <button type="button" class="ghost" id="openDir" style="font-size:16px;padding:12px 18px;margin-left:8px">📂 Ouvrir un dossier d'épisodes</button>
+      <input type="file" id="dirIn" webkitdirectory multiple hidden>
+      <p style="color:var(--mu);font-size:13px;margin:8px 0 0">Choisis un <b>dossier</b> : tous ses épisodes (sous-dossiers compris) s'enchaînent et apparaissent dans le panneau Épisodes du lecteur. Tu peux aussi choisir plusieurs vidéos, ou glisser un dossier ici. Les sous-titres .srt/.vtt au même nom sont repris. Aucune connexion nécessaire.</p>
     </div>
     <form id="f">
       <label>Lien du flux (.m3u8)
@@ -1430,7 +1432,7 @@ function boostRestore(){
 v.addEventListener('loadedmetadata',()=>{if(actx&&bgain)bgain.gain.value=bst||1;else boostRestore()});
 
 /* ---------- dossiers, panneau Épisodes, signalement ---------- */
-var epShown=-1;
+var epShown=-1,LOCSET=null; /* LOCSET : épisodes du dossier / de la sélection locale ouverte */
 const qOf=c=>c.ep?[]:c.q;
 let FOLD={name:'',items:null,t:0};
 const NAT=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
@@ -1444,7 +1446,7 @@ function applyFolder(c,name,items){
   if(i<0||items.length<2)return;
   c.folder=name;c.ep=items;c.q=items.slice(i+1);
 }
-function applyCachedFolder(c){c.ep=null;if(c.local)return;if(FOLD.items)applyFolder(c,FOLD.name,FOLD.items)}
+function applyCachedFolder(c){c.ep=null;if(c.local){if(LOCSET&&LOCSET.items.length>1)applyFolder(c,LOCSET.name,LOCSET.items);return}if(FOLD.items)applyFolder(c,FOLD.name,FOLD.items)}
 async function loadFolder(c,name){
   try{
     let items;
@@ -2010,30 +2012,57 @@ function localAudio(){
 }
 
 /* ---------- fichiers vidéo locaux (fonctionne sans connexion) ---------- */
-async function openLocal(list){
+/*LOCALPURE*/
+const P=f=>f.webkitRelativePath||f._p||f.name; /* chemin relatif dans le dossier ouvert */
+const dirOf=p=>p.replace(/[^/]*$/,'');
+const lsort=(a,b)=>{const x=epInfo(a.title),y=epInfo(b.title);if(x&&y&&(x.s!==y.s||x.e!==y.e))return x.s-y.s||x.e-y.e;return NAT.compare(a.path,b.path)};
+const subOf=(bn,sb)=>{sb=sb.toLowerCase();return sb===bn||(sb.startsWith(bn)&&/[\s._-]/.test(sb.charAt(bn.length)))}; /* "ep 1.srt" ne doit pas aller avec "ep 10" */
+/*END*/
+async function openLocal(list,folder){
   const files=[...list],isV=f=>/^video\//.test(f.type)||/\.(mp4|m4v|mov|mkv|webm|avi|ogv|mpe?g|3gp|ts)$/i.test(f.name),isS=f=>/\.(srt|vtt)$/i.test(f.name);
-  const vids=files.filter(isV).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})),subf=files.filter(isS);
-  if(!vids.length){$('#msg').textContent='Aucune vidéo dans ta sélection.';return}
+  const vids=files.filter(isV),subf=files.filter(isS);
+  if(!vids.length){$('#msg').textContent=folder?'Aucune vidéo dans ce dossier.':'Aucune vidéo dans ta sélection.';return}
   $('#msg').textContent='';
   Object.keys(LOCALS).forEach(k=>{try{URL.revokeObjectURL(LOCALS[k].url);LOCALS[k].subs.forEach(x=>URL.revokeObjectURL(x.url))}catch(e){}delete LOCALS[k]});
   const base=n=>n.replace(/\.[^.]+$/,''),subUrl=async f=>{const t=await f.text();return URL.createObjectURL(new Blob([/\.srt$/i.test(f.name)?'WEBVTT\n\n'+t.replace(/\r/g,'').replace(/(\d+:\d\d:\d\d),(\d{3})/g,'$1.$2'):t],{type:'text/vtt'}))};
   const items=[];
   for(const f of vids){
-    const key='local:'+f.name+'|'+f.size,bn=base(f.name).toLowerCase(),subs=[];
-    for(const sf of subf){const sb=base(sf.name);if(sb.toLowerCase().startsWith(bn)){try{subs.push({label:nl(sb.slice(bn.length).replace(/^[\s._-]+/,''))||'Sous-titres',url:await subUrl(sf)})}catch(e){}}}
+    let key='local:'+f.name+'|'+f.size;if(LOCALS[key])key+='|'+P(f); /* deux fichiers identiques dans des sous-dossiers différents */
+    const bn=base(f.name).toLowerCase(),subs=[];
+    for(const sf of subf){const sb=base(sf.name);if(dirOf(P(sf))===dirOf(P(f))&&subOf(bn,sb)){try{subs.push({label:nl(sb.slice(bn.length).replace(/^[\s._-]+/,''))||'Sous-titres',url:await subUrl(sf)})}catch(e){}}}
     if(vids.length===1&&!subs.length)for(const sf of subf){try{subs.push({label:nl(base(sf.name).split(/[.\s_-]+/).pop())||'Sous-titres',url:await subUrl(sf)})}catch(e){}}
     const title=smartName(base(f.name))||base(f.name);
     LOCALS[key]={url:URL.createObjectURL(f),subs,file:f};
-    items.push({src:key,title,subs});
+    items.push({src:key,title,subs,path:P(f)});
   }
+  items.sort(lsort);
+  LOCSET={name:folder||'',items};
   destroy();document.body.classList.remove('embed');document.body.classList.add('local');
   $('#gate').hidden=true;$('#home').hidden=true;$('#watch').hidden=false;
   start(items[0].src,items[0].title,items[0].subs,items.slice(1),'','',[]);
 }
+/* dossier glissé-déposé : on parcourt les sous-dossiers */
+const readAll=rd=>new Promise((ok,no)=>{const all=[];(function go(){rd.readEntries(es=>{if(!es.length)return ok(all);all.push(...es);go()},no)})()});
+async function walk(en,path,out){
+  if(en.isFile)await new Promise(r=>en.file(f=>{f._p=path+f.name;out.push(f);r()},r));
+  else if(en.isDirectory)for(const c of await readAll(en.createReader()))await walk(c,path+en.name+'/',out);
+}
+async function dropCollect(dt){ /* les entrées doivent être lues avant le premier await */
+  const its=[...(dt.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean),plain=[...dt.files];
+  if(!its.some(e=>e.isDirectory))return{files:plain,name:''};
+  const out=[];for(const e of its)await walk(e,'',out);
+  return{files:out,name:its.length===1&&its[0].isDirectory?its[0].name:''};
+}
 $('#openLocal').onclick=()=>$('#localIn').click();
-$('#localIn').onchange=e=>{const f=e.target.files;if(f&&f.length)openLocal(f);e.target.value=''};
+$('#localIn').onchange=e=>{const f=[...e.target.files];e.target.value='';if(f.length)openLocal(f)};
+$('#openDir').onclick=()=>$('#dirIn').click();
+$('#dirIn').onchange=e=>{const f=[...e.target.files];e.target.value='';if(!f.length)return;const p=f[0].webkitRelativePath||'';openLocal(f,p.includes('/')?p.split('/')[0]:'')};
 document.addEventListener('dragover',e=>{if(!$('#home').hidden)e.preventDefault()});
-document.addEventListener('drop',e=>{if(!$('#home').hidden&&e.dataTransfer&&e.dataTransfer.files.length){e.preventDefault();openLocal(e.dataTransfer.files)}});
+document.addEventListener('drop',async e=>{
+  if($('#home').hidden||!e.dataTransfer||!(e.dataTransfer.files.length||(e.dataTransfer.items||[]).length))return;
+  e.preventDefault();
+  const r=await dropCollect(e.dataTransfer);if(r.files.length)openLocal(r.files,r.name);
+});
 if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})});
 </script>
 </body>
