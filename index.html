@@ -2056,6 +2056,51 @@ function mkvLace(b,p,lace,total){
   const out=[];let o=p;for(const s of sz){out.push([o,o+s]);o+=s}
   out.push([o,total]);return out;
 }
+/* MKV : un seul parcours du fichier pour tous les passages de décodage. Les trames sont copiées en mémoire (dans la limite de budget) :
+   lire un énorme Blob fait de milliers de morceaux de fichier est très lent sur téléphone. */
+function mkvScanner(f,info,x,budget){
+  const R=embReader(f,8<<20,true),P=[],T=[];
+  let pos=info.first,clTs=0,n=0,bytes=0,eof=false;
+  return{
+    async upto(to,stop,prog){
+      if(eof)return true;
+      while(pos<f.size){
+        if(++n%200===0){if(stop())return false;if(prog)prog(pos/f.size)}
+        const hb=await R.get(pos,16),id=embVint(hb,0,true),sz=id&&embVint(hb,id.len,false);
+        if(!id||!sz)break;
+        const body=pos+id.len+sz.len,I=id.val;
+        if(I===0x1F43B675||I===0xA0){pos=body;continue}
+        if(I===0xE7){
+          const b=await R.get(body,sz.val),ct=embNum(b,0,b.length);
+          if(ct*info.scale/1e9>to)return true; /* pos inchangé : on reprendra ici */
+          clTs=ct;pos=body+sz.val;continue;
+        }
+        if(I===0xA3||I===0xA1){
+          const hd=await R.get(body,Math.min(sz.val,12)),tn=embVint(hd,0,false);
+          if(tn&&tn.val===x.num){
+            let rel=(hd[tn.len]<<8)|hd[tn.len+1];if(rel>=32768)rel-=65536;
+            const lace=hd[tn.len+2]&6,t=(clTs+rel)*info.scale;
+            const b=lace?await R.get(body,Math.min(sz.val,8192)):hd;
+            for(const q of mkvLace(b,tn.len+3,lace,sz.val)){
+              const len=q[1]-q[0];
+              if(bytes+len<=budget){P.push((await R.get(body+q[0],len)).slice());bytes+=len}
+              else P.push(f.slice(body+q[0],body+q[1]));
+              T.push(t);
+            }
+          }
+          pos=body+sz.val;continue;
+        }
+        pos=sz.unk?body:body+sz.val;
+      }
+      eof=true;return true;
+    },
+    range(from,to){
+      let i0=0;while(i0<T.length&&T[i0]/1e9<from)i0++;
+      let i1=i0;while(i1<T.length&&T[i1]/1e9<=to)i1++;
+      return{parts:P.slice(i0,i1),off:i0<T.length?T[i0]/1e9:0,dur:i1>i0?(T[i1-1]-T[i0])/1e9:0,eof:eof&&i1>=T.length};
+    }
+  };
+}
 async function mkvAudioFrames(f,info,x,stop,prog,o){
   o=o||{};const lazy=!!o.lazy,from=o.from||0,to=o.to==null?Infinity:o.to;let eof=true;
   const R=embReader(f,8<<20,true),fr=[],ts=[];let pos=info.first,clTs=0,n=0,bytes=0;
@@ -2092,9 +2137,12 @@ async function auxBuild(info,f,x,stop,prog,o){
   if(DECOK(x)){ /* AC-3 / E-AC-3 / DTS : flux brut -> ffmpeg.wasm -> MP3 stéréo */
     o=o||{};let fr,off,eof,dur;
     if(info.kind==='mkv'){
-      const r=await mkvAudioFrames(f,info,x,stop,prog,{lazy:true,from:o.from,to:o.to});if(!r)return null;
-      if(!r.fr.length)throw new Error('piste vide');
-      fr=r.fr;off=r.ts[0]/1e9;eof=r.eof;dur=(r.ts[r.ts.length-1]-r.ts[0])/1e9;
+      const sc=o.sc||mkvScanner(f,info,x,o.budget||4e8);
+      const to=o.to==null?Infinity:o.to;
+      if(!await sc.upto(to,stop,prog))return null;
+      const r=sc.range(o.from||0,to);
+      if(!r.parts.length)throw new Error('piste vide');
+      fr=r.parts;off=r.off;eof=r.eof;dur=r.dur;
     }else{
       const r=mp4AudioRange(f,x.t,o.from||0,o.to==null?Infinity:o.to);
       if(!r.parts.length)throw new Error('piste vide');
@@ -2162,20 +2210,27 @@ function auxStart(c,i,r){
 /* --- décodage logiciel AC-3 / E-AC-3 / DTS (ffmpeg.wasm, téléchargé à la première utilisation puis gardé en cache) --- */
 const FFB='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/';
 const FFW=[
+"let core=null;",
 "onmessage=async e=>{const m=e.data;try{",
-"importScripts(m.js);",
-"const core=await self.createFFmpegCore({wasmBinary:await m.wasm.arrayBuffer()});",
-"const FS=core.FS;let inp='/in.raw';",
-"if(FS.filesystems&&FS.filesystems.WORKERFS){FS.mkdir('/in');FS.mount(FS.filesystems.WORKERFS,{blobs:[{name:'in.raw',data:m.blob}]},'/in');inp='/in/in.raw'}",
-"else FS.writeFile(inp,new Uint8Array(new FileReaderSync().readAsArrayBuffer(m.blob)));",
+"if(!core){importScripts(m.js);",
+"core=await self.createFFmpegCore({wasmBinary:await m.wasm.arrayBuffer()});",
 "if(core.setLogger)core.setLogger(d=>postMessage({log:String((d&&d.message)||d)}));",
 "if(core.setProgress)core.setProgress(d=>postMessage({t:d&&d.time}));",
-"if(core.setTimeout)core.setTimeout(-1);",
+"if(core.setTimeout)core.setTimeout(-1)}",
+"const FS=core.FS;let inp='/in/in.raw';",
+"try{FS.unmount('/in')}catch(_){}try{FS.mkdir('/in')}catch(_){}",
+"if(FS.filesystems&&FS.filesystems.WORKERFS)FS.mount(FS.filesystems.WORKERFS,{blobs:[{name:'in.raw',data:m.blob}]},'/in');",
+"else FS.writeFile(inp,new Uint8Array(new FileReaderSync().readAsArrayBuffer(m.blob)));",
+"try{FS.unlink('/out.mp3')}catch(_){}",
 "const a=m.args.map(s=>s==='IN'?inp:s);",
 "if(core.exec)core.exec(...a);else core.callMain(a);",
-"if(core.ret)throw new Error('ffmpeg code '+core.ret);",
-"const out=FS.readFile('/out.mp3');postMessage({done:out},[out.buffer]);",
+"const ret=core.ret;if(core.reset)core.reset();",
+"if(ret)throw new Error('ffmpeg code '+ret);",
+"const out=FS.readFile('/out.mp3');try{FS.unlink('/out.mp3')}catch(_){}",
+"postMessage({done:out},[out.buffer]);",
 "}catch(err){postMessage({err:String((err&&err.message)||err)})}}"].join('\n');
+var FFWK=null;
+function ffClose(){if(FFWK){FFWK.terminate();FFWK=null}}
 var FFA=null;
 async function ffGet(u){
   let c=null;try{c=await caches.open('flux-dec')}catch(e){}
@@ -2189,21 +2244,22 @@ function ffAssets(){
 }
 async function ffDecode(blob,fmt,stop,dur,cb,wav){
   const A=await ffAssets();if(stop())return null;
+  if(!FFWK)FFWK=new Worker(URL.createObjectURL(new Blob([FFW],{type:'text/javascript'})));
+  const w=FFWK;
   return new Promise((ok,ko)=>{
-    const wu=URL.createObjectURL(new Blob([FFW],{type:'text/javascript'})),w=new Worker(wu);
-    const end=()=>{clearInterval(tm);w.terminate();URL.revokeObjectURL(wu)};
-    const tm=setInterval(()=>{if(stop()){end();ok(null)}},400);
+    const end=()=>{clearInterval(tm);w.onmessage=w.onerror=null};
+    const tm=setInterval(()=>{if(stop()){end();if(FFWK===w)ffClose();ok(null)}},400);
     w.onmessage=e=>{
       const d=e.data;
       if(d.done){end();ok(new Blob([d.done],{type:wav?'audio/wav':'audio/mpeg'}));return}
-      if(d.err){end();ko(new Error(d.err));return}
+      if(d.err){end();if(FFWK===w)ffClose();ko(new Error(d.err));return}
       if(!cb||!(dur>0))return;
       let s=null;
       if(d.t!=null&&isFinite(d.t))s=d.t>1e4?d.t/1e6:d.t;
       else if(d.log){const q=/time=(\d+):(\d+):([\d.]+)/.exec(d.log);if(q)s=q[1]*3600+q[2]*60+parseFloat(q[3])}
       if(s!=null)cb(Math.max(0,Math.min(.99,s/dur)));
     };
-    w.onerror=e=>{end();ko(new Error(e.message||'erreur du décodeur'))};
+    w.onerror=e=>{end();if(FFWK===w)ffClose();ko(new Error(e.message||'erreur du décodeur'))};
     w.postMessage({js:A.js,wasm:A.wasm,blob,args:['-hide_banner','-nostdin','-y','-f',fmt,'-i','IN','-vn','-ac','2','-ar','32000'].concat(wav?['-c:a','pcm_s16le','-f','wav']:['-c:a','libmp3lame','-b:a','128k','-compression_level','9','-joint_stereo','1','-write_xing','0','-id3v2_version','0','-f','mp3'],['/out.mp3'])});
   });
 }
@@ -2225,26 +2281,41 @@ function auxSwap(c,i,r){
   xa._u=URL.createObjectURL(r.blob);xa.src=xa._u;AUX.off=r.off;
   xa.addEventListener('loadedmetadata',()=>auxSync(true),{once:true});
 }
+function decBadge(t){
+  let e=document.getElementById('decB');
+  if(!t){if(e)e.remove();return}
+  if(!e){e=document.createElement('div');e.id='decB';e.style.cssText='position:fixed;left:8px;bottom:70px;z-index:99999;background:rgba(0,0,0,.78);color:#fff;font:12px system-ui,sans-serif;padding:6px 10px;border-radius:8px;pointer-events:none;max-width:85vw';document.body.appendChild(e)}
+  e.textContent=t;
+}
+const MOBILE=/Android|iPhone|iPad|Mobi/i.test(navigator.userAgent);
 async function auxDecodeTrack(c,i,x,stop){
-  const lab=x.codec,pc=p=>Math.round(p*100);
+  const lab=x.codec,pc=p=>Math.round(p*100),t0=Date.now();
+  const bt=setInterval(()=>decBadge(c.auxNote?c.auxNote+' · '+Math.round((Date.now()-t0)/1000)+' s':''),700);
   try{
-    toast(lab+' : préparation du décodeur audio…');c.auxNote='audio : décodeur…';
+    c.auxNote='téléchargement du décodeur audio (une seule fois)…';decBadge(c.auxNote);
+    await ffAssets();if(stop())return;
+    c.auxNote='audio '+lab+' : préparation…';
     const pos=v.currentTime||0,from=Math.max(0,pos-3);
-    /* 3 étapes : 90 s en WAV (quasi instantané), puis 15 min en WAV, puis tout en MP3 ; chacune remplace la précédente sans coupure */
-    const st=[{to:pos+90,out:'wav',n:'début'},{to:pos+900,out:'wav',n:'15 min'},{from:0,out:'mp3',n:'complet'}];
+    /* étapes : un début court en WAV (quasi instantané), puis une fenêtre plus longue en WAV, puis tout en MP3 ;
+       chacune remplace la précédente sans coupure. Téléphone : fenêtres plus courtes. */
+    const st=MOBILE?[{to:pos+30,out:'wav',n:'début'},{to:pos+240,out:'wav',n:'4 min'},{from:0,out:'mp3',n:'complet'}]
+                   :[{to:pos+90,out:'wav',n:'début'},{to:pos+900,out:'wav',n:'15 min'},{from:0,out:'mp3',n:'complet'}];
+    c.scan=c.scan||{};
+    const sc=x.raw?(c.scan[i]=c.scan[i]||mkvScanner(c.lFile,c.lInfo,x,MOBILE?3e8:5e8)):null;
     let r=null;
     for(let k=0;k<st.length;k++){
       const e=st[k];
-      r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
-        {from:e.from==null?from:e.from,to:e.to,out:e.out,dec:p=>{c.auxNote='audio '+lab+' : décodage ('+e.n+') '+pc(p)+' %'}});
+      r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture du fichier '+pc(p)+' %'},
+        {sc,from:e.from==null?from:e.from,to:e.to,out:e.out,dec:p=>{c.auxNote='audio '+lab+' : décodage ('+e.n+') '+pc(p)+' %'}});
       if(!r||stop())return;
       if(k===0){if(!auxStart(c,i,r))return;savePref('audio',embLab(x.lang,x.name,false,i))}
       else auxSwap(c,i,r);
+      c.auxNote='audio '+lab+' : suite en cours…';
       if(r.full){c.auxCache[i]=r;if(k>0)toast('Audio '+lab+' : décodage terminé');return}
     }
   }catch(e){
     if(!stop()){console.warn('décodage audio',e);toast('Décodage '+lab+' impossible : '+(e&&e.message||e))}
-  }finally{if(!stop())c.auxNote=''}
+  }finally{clearInterval(bt);if(!stop()){ffClose();c.auxNote='';decBadge('')}}
 }
 var AUXJOB=0;
 async function auxPick(i){
@@ -2254,7 +2325,7 @@ async function auxPick(i){
   if(AUX&&AUX.idx===i)return;
   if(!AUXOK(x)){toast('« '+embAName(x,null,i)+' » : codec non lisible par le navigateur. Convertis le fichier (MP4 + audio AAC).');return}
   if(c.auxBusy===i){toast('Traitement déjà en cours…');return}
-  const job=++AUXJOB,stop=()=>cur!==c||AUXJOB!==job;
+  const job=++AUXJOB,stop=()=>cur!==c||AUXJOB!==job;ffClose();
   c.auxCache=c.auxCache||{};
   let r=c.auxCache[i];
   if(!r&&DECOK(x)){c.auxBusy=i;await auxDecodeTrack(c,i,x,stop);if(c.auxBusy===i)c.auxBusy=-1;return}
