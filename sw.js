@@ -17,7 +17,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== V) await caches.delete(k);
+    for (const k of await caches.keys()) if (k !== V && k !== 'flux-dec') await caches.delete(k); /* 'flux-dec' = décodeur audio ffmpeg.wasm (gros, on le garde) */
     await self.clients.claim();
   })());
 });

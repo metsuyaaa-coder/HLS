@@ -1285,7 +1285,7 @@ v.addEventListener('volumechange',vsync);
 v.addEventListener('waiting',()=>pl.classList.add('wait'));
 ['playing','canplay','seeked'].forEach(n=>v.addEventListener(n,()=>pl.classList.remove('wait')));
 v.addEventListener('loadstart',()=>pl.classList.add('wait'));
-v.addEventListener('error',()=>{if(!hls&&v.src)fail(cur&&cur.local?"Ce fichier n'est pas lisible par le navigateur (MKV/AVI ou audio DTS/AC3 souvent refusés). Convertis-le en MP4 (H.264 + AAC) ou ouvre-le avec VLC.":'Impossible de lire ce flux.')});
+v.addEventListener('error',()=>{if(!hls&&v.src)fail(cur&&cur.local?"Ce fichier n'est pas lisible par le navigateur (conteneur AVI/MPEG ou vidéo H.265/AV1 souvent refusés). Convertis-le en MP4 (H.264 + AAC) ou ouvre-le avec VLC.":'Impossible de lire ce flux.')});
 sync();vsync();
 /* réglages mémorisés : volume, son coupé, vitesse, luminosité */
 if(typeof prefs.vol==='number')v.volume=Math.max(0,Math.min(1,prefs.vol));
@@ -1825,7 +1825,7 @@ async function mkvProbe(f){
 function embCodec(c){
   c=String(c||'');
   const m={'A_AAC':'AAC','A_AC3':'AC3','A_EAC3':'E-AC3','A_OPUS':'Opus','A_VORBIS':'Vorbis','A_FLAC':'FLAC','A_MPEG/L3':'MP3','mp4a':'AAC','ac-3':'AC3','ec-3':'E-AC3','Opus':'Opus','fLaC':'FLAC','.mp3':'MP3'};
-  if(m[c])return m[c];if(/^A_DTS/.test(c)||/^dts/i.test(c))return'DTS';if(/^A_TRUEHD/.test(c)||c==='mlpa')return'TrueHD';return'';
+  if(m[c])return m[c];if(/^A_AC3/.test(c))return'AC3';if(/^A_EAC3/.test(c))return'E-AC3';if(/^A_DTS/.test(c)||/^dts/i.test(c))return'DTS';if(/^A_TRUEHD/.test(c)||c==='mlpa')return'TrueHD';return'';
 }
 const embAssText=d=>{
   const p=d.split(',');if(p.length<9)return'';
@@ -1963,7 +1963,8 @@ async function embExtract(f,info,stop,prog){
    on la remballe en MP4 audio (ou MP3), et une 2e balise <audio> la joue en synchro avec la vidéo (dont le son d'origine est coupé). */
 /*AUXPURE*/
 const AAC_SR=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350];
-const AUXOK=x=>x.raw?(/^A_AAC/.test(x.raw)||x.raw==='A_OPUS'||x.raw==='A_MPEG/L3'):!!(x.t&&x.t.stsd&&(x.codec==='AAC'||x.codec==='Opus'));
+const DECOK=x=>!!x&&(x.codec==='AC3'||x.codec==='E-AC3'||x.codec==='DTS'); /* codecs que le navigateur ne lit pas : décodés par ffmpeg.wasm */
+const AUXOK=x=>DECOK(x)||(x.raw?(/^A_AAC/.test(x.raw)||x.raw==='A_OPUS'||x.raw==='A_MPEG/L3'):!!(x.t&&x.t.stsd&&(x.codec==='AAC'||x.codec==='Opus')));
 const bcat=(...ps)=>{ps=ps.map(p=>typeof p==='number'?new Uint8Array([p>>>24&255,p>>>16&255,p>>>8&255,p&255]):typeof p==='string'?Uint8Array.from(p,c=>c.charCodeAt(0)):Array.isArray(p)?new Uint8Array(p):p);let n=0;ps.forEach(p=>n+=p.length);const o=new Uint8Array(n);let k=0;ps.forEach(p=>{o.set(p,k);k+=p.length});return o};
 const bbx=(t,...p)=>{const b=bcat(...p);return bcat(b.length+8,t,b)};
 const bu32=a=>{const o=new Uint8Array(a.length*4),d=new DataView(o.buffer);for(let i=0;i<a.length;i++)d.setUint32(i*4,a[i]);return o};
@@ -2020,8 +2021,31 @@ function mp4AudioMux(f,t){
   }
   return{stsd:bbx('stsd',t.stsd),tsc:t.tsc,stts:t.stts,n,sizes:t.sizes||null,ssz:t.ssz,parts,dataLen:len};
 }
+/* MP4 / MOV : flux brut (AC-3, E-AC-3, DTS) d'une plage de temps, sans rien copier en mémoire (morceaux du fichier) */
+function mp4AudioRange(f,t,from,to){
+  const n=t.n||0;if(!n||!t.co.length||!t.stsc.length)throw new Error('table audio illisible');
+  const off=new Array(n),size=new Array(n);let si=0;
+  for(let c=0;c<t.co.length&&si<n;c++){
+    let spc=t.stsc[0][1];for(const e of t.stsc){if(e[0]<=c+1)spc=e[1];else break}
+    let o=t.co[c];
+    for(let k=0;k<spc&&si<n;k++){const sz=t.sizes?t.sizes[si]:t.ssz;off[si]=o;size[si]=sz;o+=sz;si++}
+  }
+  const st=new Array(n);let tm=0,i=0;
+  for(const e of t.stts)for(let k=0;k<e[0]&&i<n;k++){st[i++]=tm/t.tsc;tm+=e[1]}
+  let i0=0;while(i0<n&&st[i0]<from)i0++;
+  let i1=i0;while(i1<n&&st[i1]<=to)i1++;
+  const parts=[];let a=-1,b=-1;
+  for(let k=i0;k<i1;k++){
+    if(a>=0&&off[k]===b){b+=size[k];continue}
+    if(a>=0)parts.push(f.slice(a,b));
+    a=off[k];b=a+size[k];
+  }
+  if(a>=0)parts.push(f.slice(a,b));
+  return{parts,off:i0<n?st[i0]:0,dur:i1>i0?st[i1-1]-st[i0]:0,eof:i1>=n};
+}
 /* MKV / WebM : parcours des clusters, on garde les blocs de la piste voulue */
-async function mkvAudioFrames(f,info,x,stop,prog){
+async function mkvAudioFrames(f,info,x,stop,prog,o){
+  o=o||{};const lazy=!!o.lazy,from=o.from||0,to=o.to==null?Infinity:o.to;let eof=true;
   const R=embReader(f,8<<20,true),fr=[],ts=[];let pos=info.first,clTs=0,n=0,bytes=0;
   while(pos<f.size){
     if(++n%200===0){if(stop())return null;if(prog)prog(pos/f.size)}
@@ -2029,10 +2053,15 @@ async function mkvAudioFrames(f,info,x,stop,prog){
     if(!id||!sz)break;
     const body=pos+id.len+sz.len,I=id.val;
     if(I===0x1F43B675||I===0xA0){pos=body;continue}
-    if(I===0xE7){const b=await R.get(body,sz.val);clTs=embNum(b,0,b.length);pos=body+sz.val;continue}
+    if(I===0xE7){const b=await R.get(body,sz.val);clTs=embNum(b,0,b.length);if(clTs*info.scale/1e9>to){eof=false;break}pos=body+sz.val;continue}
     if(I===0xA3||I===0xA1){
       const hd=await R.get(body,Math.min(sz.val,12)),tn=embVint(hd,0,false);
-      if(tn&&tn.val===x.num){
+      if(tn&&tn.val===x.num&&lazy){
+        let rel=(hd[tn.len]<<8)|hd[tn.len+1];if(rel>=32768)rel-=65536;
+        if(hd[tn.len+2]&6)throw new Error('piste audio « laced » non gérée');
+        const t=(clTs+rel)*info.scale;
+        if(t/1e9>=from){fr.push(f.slice(body+tn.len+3,body+sz.val));ts.push(t)}
+      }else if(tn&&tn.val===x.num){
         const b=await R.get(body,sz.val);let rel=(b[tn.len]<<8)|b[tn.len+1];if(rel>=32768)rel-=65536;
         if(b[tn.len+2]&6)throw new Error('piste audio « laced » non gérée');
         const d=b.slice(tn.len+3);fr.push(d);ts.push((clTs+rel)*info.scale);bytes+=d.length;
@@ -2042,9 +2071,25 @@ async function mkvAudioFrames(f,info,x,stop,prog){
     }
     pos=sz.unk?body:body+sz.val;
   }
-  return{fr,ts};
+  return{fr,ts,eof};
 }
-async function auxBuild(info,f,x,stop,prog){
+const ffFmt=x=>x.codec==='AC3'?'ac3':x.codec==='E-AC3'?'eac3':'dts';
+async function auxBuild(info,f,x,stop,prog,o){
+  if(DECOK(x)){ /* AC-3 / E-AC-3 / DTS : flux brut -> ffmpeg.wasm -> MP3 stéréo */
+    o=o||{};let fr,off,eof,dur;
+    if(info.kind==='mkv'){
+      const r=await mkvAudioFrames(f,info,x,stop,prog,{lazy:true,from:o.from,to:o.to});if(!r)return null;
+      if(!r.fr.length)throw new Error('piste vide');
+      fr=r.fr;off=r.ts[0]/1e9;eof=r.eof;dur=(r.ts[r.ts.length-1]-r.ts[0])/1e9;
+    }else{
+      const r=mp4AudioRange(f,x.t,o.from||0,o.to==null?Infinity:o.to);
+      if(!r.parts.length)throw new Error('piste vide');
+      fr=r.parts;off=r.off;eof=r.eof;dur=r.dur;
+    }
+    const blob=await ffDecode(new Blob(fr),ffFmt(x),stop,dur,o.dec);if(!blob)return null;
+    /* l'MP3 sans balise Xing/LAME garde 1105 échantillons de retard (encodeur + décodeur) : on les compense */
+    return{blob,off:off-1105/48000,full:!(o.from>0)&&eof};
+  }
   if(info.kind!=='mkv')return{blob:mp4Mux(mp4AudioMux(f,x.t)),off:0};
   const r=await mkvAudioFrames(f,info,x,stop,prog);if(!r)return null;
   if(!r.fr.length)throw new Error('piste vide');
@@ -2054,7 +2099,7 @@ async function auxBuild(info,f,x,stop,prog){
 }
 /*END*/
 /* lecture : une 2e balise <audio> branchée sur le même circuit Web Audio que la vidéo (volume, mute et boost restent valables) */
-var AUX=null,AUXBUSY=false,xa=null;
+var AUX=null,xa=null;
 function auxSync(force){
   if(!AUX||!xa)return;
   xa.volume=v.volume;xa.muted=v.muted;
@@ -2099,22 +2144,112 @@ function auxStart(c,i,r){
   toast('Piste audio : '+embAName(c.lAudio[i],null,i));
   return true;
 }
+/* --- décodage logiciel AC-3 / E-AC-3 / DTS (ffmpeg.wasm, téléchargé à la première utilisation puis gardé en cache) --- */
+const FFB='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/';
+const FFW=[
+"onmessage=async e=>{const m=e.data;try{",
+"importScripts(m.js);",
+"const core=await self.createFFmpegCore({wasmBinary:await m.wasm.arrayBuffer()});",
+"const FS=core.FS;let inp='/in.raw';",
+"if(FS.filesystems&&FS.filesystems.WORKERFS){FS.mkdir('/in');FS.mount(FS.filesystems.WORKERFS,{blobs:[{name:'in.raw',data:m.blob}]},'/in');inp='/in/in.raw'}",
+"else FS.writeFile(inp,new Uint8Array(new FileReaderSync().readAsArrayBuffer(m.blob)));",
+"if(core.setLogger)core.setLogger(d=>postMessage({log:String((d&&d.message)||d)}));",
+"if(core.setProgress)core.setProgress(d=>postMessage({t:d&&d.time}));",
+"if(core.setTimeout)core.setTimeout(-1);",
+"const a=m.args.map(s=>s==='IN'?inp:s);",
+"if(core.exec)core.exec(...a);else core.callMain(a);",
+"if(core.ret)throw new Error('ffmpeg code '+core.ret);",
+"const out=FS.readFile('/out.mp3');postMessage({done:out},[out.buffer]);",
+"}catch(err){postMessage({err:String((err&&err.message)||err)})}}"].join('\n');
+var FFA=null;
+async function ffGet(u){
+  let c=null;try{c=await caches.open('flux-dec')}catch(e){}
+  let r=c&&await c.match(u);
+  if(!r){r=await fetch(u);if(!r.ok)throw new Error('décodeur audio indisponible (réseau ?)');if(c)try{await c.put(u,r.clone())}catch(e){}}
+  return r.blob();
+}
+function ffAssets(){
+  return FFA||(FFA=Promise.all([ffGet(FFB+'ffmpeg-core.js'),ffGet(FFB+'ffmpeg-core.wasm')])
+    .then(([j,w])=>({js:URL.createObjectURL(j),wasm:w})).catch(e=>{FFA=null;throw e}));
+}
+async function ffDecode(blob,fmt,stop,dur,cb){
+  const A=await ffAssets();if(stop())return null;
+  return new Promise((ok,ko)=>{
+    const wu=URL.createObjectURL(new Blob([FFW],{type:'text/javascript'})),w=new Worker(wu);
+    const end=()=>{clearInterval(tm);w.terminate();URL.revokeObjectURL(wu)};
+    const tm=setInterval(()=>{if(stop()){end();ok(null)}},400);
+    w.onmessage=e=>{
+      const d=e.data;
+      if(d.done){end();ok(new Blob([d.done],{type:'audio/mpeg'}));return}
+      if(d.err){end();ko(new Error(d.err));return}
+      if(!cb||!(dur>0))return;
+      let s=null;
+      if(d.t!=null&&isFinite(d.t))s=d.t>1e4?d.t/1e6:d.t;
+      else if(d.log){const q=/time=(\d+):(\d+):([\d.]+)/.exec(d.log);if(q)s=q[1]*3600+q[2]*60+parseFloat(q[3])}
+      if(s!=null)cb(Math.max(0,Math.min(.99,s/dur)));
+    };
+    w.onerror=e=>{end();ko(new Error(e.message||'erreur du décodeur'))};
+    w.postMessage({js:A.js,wasm:A.wasm,blob,args:['-hide_banner','-nostdin','-y','-f',fmt,'-i','IN','-vn','-ac','2','-ar','48000','-c:a','libmp3lame','-b:a','192k','-write_xing','0','-id3v2_version','0','-f','mp3','/out.mp3']});
+  });
+}
+/* le navigateur lit-il ce codec lui-même ? (Safari : AC-3 / E-AC-3 ; Edge / Chrome selon la plateforme) */
+function nativeAud(x){
+  try{
+    const k={'AC3':'ac-3','E-AC3':'ec-3','DTS':'dtsc'}[x.codec];if(!k)return true;
+    const m='audio/mp4; codecs="'+k+'"';
+    if(window.MediaSource&&MediaSource.isTypeSupported&&MediaSource.isTypeSupported(m))return true;
+    if(v.canPlayType(m))return true;
+    return v.audioTracks!==undefined&&x.codec!=='DTS';
+  }catch(e){return false}
+}
+const needAux=x=>DECOK(x)&&!nativeAud(x);
+/* swap discret quand le décodage complet est prêt (le début, décodé en premier, jouait déjà) */
+function auxSwap(c,i,r){
+  if(cur!==c||!AUX||AUX.idx!==i||!xa)return;
+  if(xa._u)URL.revokeObjectURL(xa._u);
+  xa._u=URL.createObjectURL(r.blob);xa.src=xa._u;AUX.off=r.off;
+  xa.addEventListener('loadedmetadata',()=>auxSync(true),{once:true});
+}
+async function auxDecodeTrack(c,i,x,stop){
+  const lab=x.codec,pc=p=>Math.round(p*100);
+  try{
+    toast(lab+' : préparation du décodeur audio…');c.auxNote='audio : décodeur…';
+    const pos=v.currentTime||0;
+    let r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
+      {from:Math.max(0,pos-3),to:pos+420,dec:p=>{c.auxNote='audio '+lab+' : décodage (début) '+pc(p)+' %'}});
+    if(!r||stop())return;
+    if(!auxStart(c,i,r))return;
+    savePref('audio',embLab(x.lang,x.name,false,i));
+    if(r.full){c.auxCache[i]=r;return}
+    c.auxNote='audio '+lab+' : suite en cours…';
+    r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
+      {dec:p=>{c.auxNote='audio '+lab+' : décodage complet '+pc(p)+' %'}});
+    if(!r||stop())return;
+    c.auxCache[i]=r;auxSwap(c,i,r);toast('Audio '+lab+' : décodage terminé');
+  }catch(e){
+    if(!stop()){console.warn('décodage audio',e);toast('Décodage '+lab+' impossible : '+(e&&e.message||e))}
+  }finally{if(!stop())c.auxNote=''}
+}
+var AUXJOB=0;
 async function auxPick(i){
   const c=cur;if(!c||!c.local||!c.lInfo)return;
   const x=c.lAudio[i];if(!x)return;
-  if(i===0){savePref('audio',embLab(x.lang,x.name,false,0));if(AUX){auxStop();c.auxNote='';toast("Piste audio d'origine")}return}
+  if(i===0&&!needAux(x)){AUXJOB++;savePref('audio',embLab(x.lang,x.name,false,0));if(AUX){auxStop();c.auxNote='';toast("Piste audio d'origine")}return}
   if(AUX&&AUX.idx===i)return;
   if(!AUXOK(x)){toast('« '+embAName(x,null,i)+' » : codec non lisible par le navigateur. Convertis le fichier (MP4 + audio AAC).');return}
-  if(AUXBUSY){toast('Extraction déjà en cours…');return}
+  if(c.auxBusy===i){toast('Traitement déjà en cours…');return}
+  const job=++AUXJOB,stop=()=>cur!==c||AUXJOB!==job;
   c.auxCache=c.auxCache||{};
   let r=c.auxCache[i];
+  if(!r&&DECOK(x)){c.auxBusy=i;await auxDecodeTrack(c,i,x,stop);if(c.auxBusy===i)c.auxBusy=-1;return}
   if(!r){
-    AUXBUSY=true;toast('Extraction de la piste audio…');
+    c.auxBusy=i;toast('Extraction de la piste audio…');
     let lastP=-1;
-    try{r=await auxBuild(c.lInfo,c.lFile,x,()=>cur!==c,p=>{const q=Math.min(99,Math.round(p*100));if(q!==lastP){lastP=q;c.auxNote='audio : extraction '+q+' %';if(q&&q%10===0)toast('Extraction de la piste audio… '+q+' %')}})}
-    catch(e){console.warn('piste audio',e);AUXBUSY=false;c.auxNote='';toast('Extraction impossible : '+(e&&e.message||e));return}
-    AUXBUSY=false;c.auxNote='';
-    if(!r||cur!==c)return;
+    try{r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{const q=Math.min(99,Math.round(p*100));if(q!==lastP){lastP=q;c.auxNote='audio : extraction '+q+' %';if(q&&q%10===0)toast('Extraction de la piste audio… '+q+' %')}})}
+    catch(e){console.warn('piste audio',e);if(c.auxBusy===i)c.auxBusy=-1;if(!stop())c.auxNote='';toast('Extraction impossible : '+(e&&e.message||e));return}
+    if(c.auxBusy===i)c.auxBusy=-1;
+    if(!stop())c.auxNote='';
+    if(!r||stop())return;
     c.auxCache[i]=r;
   }
   if(auxStart(c,i,r))savePref('audio',embLab(x.lang,x.name,false,i));
@@ -2133,9 +2268,11 @@ async function embLocal(c){
     const info=await embProbe(L.file);if(cur!==c)return;
     if(!info){c.embNote="Format non analysable (seuls MP4/MOV et MKV/WebM le sont).";return}
     c.lAudio=info.audio;c.lInfo=info;c.lFile=L.file;
-    if(info.audio.length>1&&prefs.audio){ /* même langue que la dernière piste choisie */
-      const k=info.audio.findIndex((a,i)=>sameLab(embLab(a.lang,a.name,false,i),prefs.audio));
-      if(k>0&&AUXOK(info.audio[k]))auxPick(k);
+    {
+      let k=0; /* même langue que la dernière piste choisie */
+      if(info.audio.length>1&&prefs.audio){const j=info.audio.findIndex((a,i)=>sameLab(embLab(a.lang,a.name,false,i),prefs.audio));if(j>0)k=j}
+      /* piste AC-3 / E-AC-3 / DTS : le navigateur la jouerait muette, on la décode nous-mêmes */
+      if(k>0?AUXOK(info.audio[k]):needAux(info.audio[0]))auxPick(k);
     }
     const imgs=info.subs.filter(x=>!x.text).length;
     const base=info.kind.toUpperCase()+' : '+info.audio.length+' audio, '+info.subs.length+' sous-titre'+(info.subs.length>1?'s':'')+(imgs?' ('+imgs+' en image, non lisible'+(imgs>1?'s':'')+')':'');
