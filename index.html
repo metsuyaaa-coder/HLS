@@ -2100,9 +2100,10 @@ async function auxBuild(info,f,x,stop,prog,o){
       if(!r.parts.length)throw new Error('piste vide');
       fr=r.parts;off=r.off;eof=r.eof;dur=r.dur;
     }
-    const blob=await ffDecode(new Blob(fr),ffFmt(x),stop,dur,o.dec);if(!blob)return null;
-    /* l'MP3 sans balise Xing/LAME garde 1105 échantillons de retard (encodeur + décodeur) : on les compense */
-    return{blob,off:off-1105/48000,full:!(o.from>0)&&eof};
+    const wav=o.out==='wav';
+    const blob=await ffDecode(new Blob(fr),ffFmt(x),stop,dur,o.dec,wav);if(!blob)return null;
+    /* l'MP3 sans balise Xing/LAME garde 1105 échantillons de retard (encodeur + décodeur) à 32 kHz : on les compense ; le WAV n'en a pas */
+    return{blob,off:wav?off:off-1105/32000,full:!(o.from>0)&&eof};
   }
   if(info.kind!=='mkv')return{blob:mp4Mux(mp4AudioMux(f,x.t)),off:0};
   const r=await mkvAudioFrames(f,info,x,stop,prog);if(!r)return null;
@@ -2186,7 +2187,7 @@ function ffAssets(){
   return FFA||(FFA=Promise.all([ffGet(FFB+'ffmpeg-core.js'),ffGet(FFB+'ffmpeg-core.wasm')])
     .then(([j,w])=>({js:URL.createObjectURL(j),wasm:w})).catch(e=>{FFA=null;throw e}));
 }
-async function ffDecode(blob,fmt,stop,dur,cb){
+async function ffDecode(blob,fmt,stop,dur,cb,wav){
   const A=await ffAssets();if(stop())return null;
   return new Promise((ok,ko)=>{
     const wu=URL.createObjectURL(new Blob([FFW],{type:'text/javascript'})),w=new Worker(wu);
@@ -2194,7 +2195,7 @@ async function ffDecode(blob,fmt,stop,dur,cb){
     const tm=setInterval(()=>{if(stop()){end();ok(null)}},400);
     w.onmessage=e=>{
       const d=e.data;
-      if(d.done){end();ok(new Blob([d.done],{type:'audio/mpeg'}));return}
+      if(d.done){end();ok(new Blob([d.done],{type:wav?'audio/wav':'audio/mpeg'}));return}
       if(d.err){end();ko(new Error(d.err));return}
       if(!cb||!(dur>0))return;
       let s=null;
@@ -2203,7 +2204,7 @@ async function ffDecode(blob,fmt,stop,dur,cb){
       if(s!=null)cb(Math.max(0,Math.min(.99,s/dur)));
     };
     w.onerror=e=>{end();ko(new Error(e.message||'erreur du décodeur'))};
-    w.postMessage({js:A.js,wasm:A.wasm,blob,args:['-hide_banner','-nostdin','-y','-f',fmt,'-i','IN','-vn','-ac','2','-ar','48000','-c:a','libmp3lame','-b:a','192k','-write_xing','0','-id3v2_version','0','-f','mp3','/out.mp3']});
+    w.postMessage({js:A.js,wasm:A.wasm,blob,args:['-hide_banner','-nostdin','-y','-f',fmt,'-i','IN','-vn','-ac','2','-ar','32000'].concat(wav?['-c:a','pcm_s16le','-f','wav']:['-c:a','libmp3lame','-b:a','128k','-compression_level','9','-joint_stereo','1','-write_xing','0','-id3v2_version','0','-f','mp3'],['/out.mp3'])});
   });
 }
 /* le navigateur lit-il ce codec lui-même ? (Safari : AC-3 / E-AC-3 ; Edge / Chrome selon la plateforme) */
@@ -2228,18 +2229,19 @@ async function auxDecodeTrack(c,i,x,stop){
   const lab=x.codec,pc=p=>Math.round(p*100);
   try{
     toast(lab+' : préparation du décodeur audio…');c.auxNote='audio : décodeur…';
-    const pos=v.currentTime||0;
-    let r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
-      {from:Math.max(0,pos-3),to:pos+420,dec:p=>{c.auxNote='audio '+lab+' : décodage (début) '+pc(p)+' %'}});
-    if(!r||stop())return;
-    if(!auxStart(c,i,r))return;
-    savePref('audio',embLab(x.lang,x.name,false,i));
-    if(r.full){c.auxCache[i]=r;return}
-    c.auxNote='audio '+lab+' : suite en cours…';
-    r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
-      {dec:p=>{c.auxNote='audio '+lab+' : décodage complet '+pc(p)+' %'}});
-    if(!r||stop())return;
-    c.auxCache[i]=r;auxSwap(c,i,r);toast('Audio '+lab+' : décodage terminé');
+    const pos=v.currentTime||0,from=Math.max(0,pos-3);
+    /* 3 étapes : 90 s en WAV (quasi instantané), puis 15 min en WAV, puis tout en MP3 ; chacune remplace la précédente sans coupure */
+    const st=[{to:pos+90,out:'wav',n:'début'},{to:pos+900,out:'wav',n:'15 min'},{from:0,out:'mp3',n:'complet'}];
+    let r=null;
+    for(let k=0;k<st.length;k++){
+      const e=st[k];
+      r=await auxBuild(c.lInfo,c.lFile,x,stop,p=>{c.auxNote='audio '+lab+' : lecture '+pc(p)+' %'},
+        {from:e.from==null?from:e.from,to:e.to,out:e.out,dec:p=>{c.auxNote='audio '+lab+' : décodage ('+e.n+') '+pc(p)+' %'}});
+      if(!r||stop())return;
+      if(k===0){if(!auxStart(c,i,r))return;savePref('audio',embLab(x.lang,x.name,false,i))}
+      else auxSwap(c,i,r);
+      if(r.full){c.auxCache[i]=r;if(k>0)toast('Audio '+lab+' : décodage terminé');return}
+    }
   }catch(e){
     if(!stop()){console.warn('décodage audio',e);toast('Décodage '+lab+' impossible : '+(e&&e.message||e))}
   }finally{if(!stop())c.auxNote=''}
