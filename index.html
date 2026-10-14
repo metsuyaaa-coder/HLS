@@ -2044,6 +2044,18 @@ function mp4AudioRange(f,t,from,to){
   return{parts,off:i0<n?st[i0]:0,dur:i1>i0?st[i1-1]-st[i0]:0,eof:i1>=n};
 }
 /* MKV / WebM : parcours des clusters, on garde les blocs de la piste voulue */
+/* découpe un bloc Matroska en trames : p = début des données (après n° de piste, temps, drapeaux), lace = drapeaux & 6 */
+function mkvLace(b,p,lace,total){
+  if(!lace)return[[p,total]];
+  const n=b[p++]+1,sz=[];
+  if(lace===2){for(let i=0;i<n-1;i++){let s=0,v;do{v=b[p++];s+=v}while(v===255);sz.push(s)}}
+  else if(lace===6){
+    let a=embVint(b,p,false);if(!a)throw new Error('lacing illisible');p+=a.len;let s=a.val;sz.push(s);
+    for(let i=1;i<n-1;i++){a=embVint(b,p,false);if(!a)throw new Error('lacing illisible');p+=a.len;s+=a.val-(Math.pow(2,7*a.len-1)-1);sz.push(s)}
+  }else{const e=Math.floor((total-p)/n);for(let i=0;i<n-1;i++)sz.push(e)}
+  const out=[];let o=p;for(const s of sz){out.push([o,o+s]);o+=s}
+  out.push([o,total]);return out;
+}
 async function mkvAudioFrames(f,info,x,stop,prog,o){
   o=o||{};const lazy=!!o.lazy,from=o.from||0,to=o.to==null?Infinity:o.to;let eof=true;
   const R=embReader(f,8<<20,true),fr=[],ts=[];let pos=info.first,clTs=0,n=0,bytes=0;
@@ -2056,15 +2068,17 @@ async function mkvAudioFrames(f,info,x,stop,prog,o){
     if(I===0xE7){const b=await R.get(body,sz.val);clTs=embNum(b,0,b.length);if(clTs*info.scale/1e9>to){eof=false;break}pos=body+sz.val;continue}
     if(I===0xA3||I===0xA1){
       const hd=await R.get(body,Math.min(sz.val,12)),tn=embVint(hd,0,false);
-      if(tn&&tn.val===x.num&&lazy){
+      if(tn&&tn.val===x.num){
         let rel=(hd[tn.len]<<8)|hd[tn.len+1];if(rel>=32768)rel-=65536;
-        if(hd[tn.len+2]&6)throw new Error('piste audio « laced » non gérée');
-        const t=(clTs+rel)*info.scale;
-        if(t/1e9>=from){fr.push(f.slice(body+tn.len+3,body+sz.val));ts.push(t)}
-      }else if(tn&&tn.val===x.num){
-        const b=await R.get(body,sz.val);let rel=(b[tn.len]<<8)|b[tn.len+1];if(rel>=32768)rel-=65536;
-        if(b[tn.len+2]&6)throw new Error('piste audio « laced » non gérée');
-        const d=b.slice(tn.len+3);fr.push(d);ts.push((clTs+rel)*info.scale);bytes+=d.length;
+        const lace=hd[tn.len+2]&6,t=(clTs+rel)*info.scale;
+        /* lacing (Xiph / taille fixe / EBML) : plusieurs trames dans un même bloc */
+        const b=lace||!lazy?await R.get(body,lace?Math.min(sz.val,8192):sz.val):null;
+        const parts=mkvLace(lace?b:hd,tn.len+3,lace,sz.val);
+        if(!lazy||t/1e9>=from)for(const q of parts){
+          if(lazy)fr.push(f.slice(body+q[0],body+q[1]));
+          else{const d=(lace?await R.get(body+q[0],q[1]-q[0]):b.subarray(q[0],q[1])).slice();fr.push(d);bytes+=d.length}
+          ts.push(t);
+        }
         if(bytes>800e6)throw new Error('piste audio trop volumineuse');
       }
       pos=body+sz.val;continue;
