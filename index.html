@@ -2082,6 +2082,11 @@ function auxStart(c,i,r){
   if(!xa){
     xa=new Audio();xa.preload='auto';
     actx.createMediaElementSource(xa).connect(bgain);
+    xa.addEventListener('error',()=>{ /* piste illisible : on rend le son d'origine au lieu de rester muet */
+      if(!AUX)return;const m=xa.error&&xa.error.message;
+      auxStop();if(cur)cur.auxNote='';
+      toast("Cette piste n'a pas pu être lue"+(m?' ('+m+')':'')+" : son d'origine rétabli.");
+    });
     ['play','playing','pause','waiting','seeking','seeked','ratechange','timeupdate','volumechange','ended'].forEach(n=>v.addEventListener(n,()=>auxSync(n==='seeked'||n==='seeking')));
   }
   if(actx.state!=='running')actx.resume().catch(()=>{});
