@@ -10,6 +10,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <title>Flux – Lecteur HLS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script>
 /* Google Cast : le callback doit exister avant le chargement du SDK */
 window.__onGCastApiAvailable=function(ok){if(ok&&window.initCast)initCast()};
@@ -19,7 +22,7 @@ window.__onGCastApiAvailable=function(ok){if(ok&&window.initCast)initCast()};
 :root{--bg:#141414;--red:#e50914;--mu:#b3b3b3;--card:#1f1f1f;--line:#333;box-sizing:border-box}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
-body{background:var(--bg);color:#fff;font-family:"Netflix Sans","Helvetica Neue",Helvetica,Arial,sans-serif}
+body{background:var(--bg);color:#fff;font-family:"Poppins","Helvetica Neue",Helvetica,Arial,sans-serif}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
 :focus-visible{outline:2px solid #fff;outline-offset:2px}
@@ -54,9 +57,8 @@ video::cue{background:transparent;color:#fff;font-family:"Helvetica Neue",Arial,
 .ui{position:absolute;inset:0;pointer-events:none;transition:opacity .3s}
 .ui button,.ui .seekrow,.ui .bw{pointer-events:auto}
 .idle .ui{opacity:0}.idle .ui *{pointer-events:none!important}.idle{cursor:none}
-.top{position:absolute;inset:0 0 auto 0;display:flex;align-items:center;gap:10px;padding:18px 22px 40px;background:linear-gradient(#000b,transparent)}
-.mark{color:var(--red);font-weight:900;font-size:34px;line-height:1;letter-spacing:-2px;transform:scaleX(.8)}
-#ttl{flex:1;font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:4px}
+.top{position:absolute;inset:0 0 auto 0;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:18px 22px 40px;background:linear-gradient(#000b,transparent)}
+#ttl{font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;flex:none;transition:background .15s,transform .15s}
 .ib:hover{background:#ffffff26}.ib:active{transform:scale(.92)}
 .ib svg{width:26px;height:26px}
@@ -206,8 +208,9 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 #vw.b2 .bt::after{content:'';position:absolute;left:0;right:0;bottom:50%;height:2px;background:#000a}
 #vw.boost #vf{background:var(--red)}
 /* bouton Épisodes : en bas sur ordinateur, sous le titre sur mobile et tablette */
-.tt{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
-.tt #ttl{flex:none;max-width:100%;margin-left:4px}
+.tt{position:absolute;left:50%;top:18px;transform:translateX(-50%);max-width:60%;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.tt *{pointer-events:auto}
+.tt #ttl{flex:none;max-width:100%;text-align:center}
 #eb2{display:none;padding:2px 4px;font-size:14px}
 #eb2 svg{width:22px;height:22px}
 @media(pointer:coarse),(max-width:640px){#eb{display:none}#eb2{display:inline-flex}}
@@ -230,6 +233,21 @@ input[type=range]:hover::-webkit-slider-thumb,input[type=range]:active::-webkit-
 .epp i{display:block;height:100%;background:var(--red)}
 .epd{color:var(--mu);font-size:15px;white-space:nowrap}
 #card.epc2 .cx{top:14px;right:14px}
+/* panneau Audio et sous-titres (style Netflix) */
+#card.ccp{padding:0;gap:0;flex-direction:column;width:min(760px,94%);max-height:86%;background:#141414;border:0;border-radius:6px;overflow:hidden;box-shadow:0 24px 70px #000c}
+.ccHead{padding:28px 64px 14px;text-align:center;border-bottom:1px solid #2a2a2a}
+.ccHead h3{margin:0;font-size:clamp(20px,2.4vw,26px);font-weight:700}
+.ccBody{display:flex;overflow:auto;padding:22px 28px 28px;min-height:0}
+.ccCol{flex:1;min-width:0;padding:0 24px}
+.ccCol:first-child{padding-left:0}
+.ccCol:last-child{padding-right:0}
+.ccCol+.ccCol{border-left:1px solid #2a2a2a}
+.ccCol h4{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu);font-weight:700}
+.ccFoot{margin-top:18px;padding-top:14px;border-top:1px solid #2a2a2a;display:grid;gap:8px}
+.ccFoot button{font-size:13px;color:var(--mu);text-decoration:underline;text-align:left;padding:2px 0}
+.ccFoot button:hover{color:#fff}
+#card.ccp .cx{top:14px;right:14px}
+@media(max-width:640px){.ccBody{flex-direction:column;gap:18px}.ccCol+.ccCol{border-left:0;border-top:1px solid #2a2a2a;padding-top:18px}.ccCol{padding:0}}
 .rpt{min-width:min(460px,72vw)}
 .rpk{display:flex;flex-wrap:wrap;gap:8px}
 .rpk .ghost.sel{background:#fff;color:#000;font-weight:700}
@@ -389,10 +407,9 @@ body.embed .player,body.local .player{position:fixed;inset:0;width:100%;height:1
 
       <div class="ui">
         <div class="top">
-          <span class="mark" aria-hidden="true">M</span><div class="tt"><span id="ttl"></span><button class="ab" id="eb2" hidden><span data-i="eps"></span>Épisodes</button></div>
+          <div class="tt"><span id="ttl"></span><button class="ab" id="eb2" hidden><span data-i="eps"></span>Épisodes</button></div>
           <button class="ib" id="cast" hidden aria-label="Diffuser sur un appareil" data-i="cast"></button>
           <button class="ib" id="pipb" aria-label="Picture-in-picture" data-i="pip"></button>
-          <button class="ib" id="rpb" aria-label="Signaler un problème" title="Signaler un problème" data-i="flag"></button>
           <button class="ib" id="close" aria-label="Fermer" data-i="x"></button>
         </div>
 
@@ -881,7 +898,7 @@ async function guessNext(c){
 }
 const canUrl=()=>!document.body.classList.contains('embed')&&!(cur&&cur.local);
 const playUrl=()=>cur.local?LOCALS[cur.src].url:cur.qi>=0&&cur.quals[cur.qi]?cur.quals[cur.qi].url:cur.src;
-const qbVis=()=>{$('#qb').hidden=!cur||cur.local||((!hls||hls.levels.length<2)&&!cur.quals.length&&document.body.classList.contains('embed'))};
+const qbVis=()=>{const multi=(cur&&cur.quals&&cur.quals.length>1)||(hls&&hls.levels&&hls.levels.length>1);$('#qb').hidden=!cur||cur.local||!multi};
 /* changer de qualité = relancer le flux (autre lien) à la même position */
 function reloadSrc(msg){
   const t=v.currentTime,was=!v.paused,a=hls?hls.audioTrack:-1;
@@ -1133,8 +1150,41 @@ function qEditPanel(){
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   $('#modal').hidden=false;
 }
+function ccPanel(){
+  const c=$('#card'),m=$('#modal');c.innerHTML='';c.classList.add('ccp');
+  const head=el('div','ccHead');head.append(el('h3','','Audio et sous-titres'));
+  const body=el('div','ccBody');
+
+  const aCol=el('div','ccCol');aCol.append(el('h4','','Audio'));
+  const aItems=hls&&hls.audioTracks.length>1?hls.audioTracks.map((x,i)=>({l:nl(x.name||x.lang||'Piste '+(i+1)),on:hls.audioTrack===i,f:()=>setAudio(i)})):localAudio();
+  (aItems.length?aItems:[{l:'Piste unique',on:true,f:()=>{}}]).forEach(it=>{
+    const b=el('button','it'+(it.on?' on':''),it.l);
+    b.onclick=()=>{it.f();ccPanel()};
+    aCol.append(b);
+  });
+
+  const sCol=el('div','ccCol');sCol.append(el('h4','','Sous-titres'));
+  const off=el('button','it'+(!curSub?' on':''),'Désactivés');
+  off.onclick=()=>{setSub(null);savePref('sub','');ccPanel()};
+  sCol.append(off);
+  subList().forEach(it=>{
+    const b=el('button','it'+(isOn(it)?' on':''),it.name);
+    b.onclick=()=>{setSub(it);savePref('sub',it.name);ccPanel()};
+    sCol.append(b);
+  });
+  const foot=el('div','ccFoot');
+  const addB=el('button','','Ajouter mes sous-titres…');addB.type='button';addB.onclick=()=>openModal('addsub');
+  const setB=el('button','','Paramètres des sous-titres…');setB.type='button';setB.onclick=()=>openModal('sub');
+  foot.append(addB,setB);sCol.append(foot);
+
+  body.append(aCol,sCol);
+  c.append(head,body);
+  const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
+  m.hidden=false;
+}
 function openModal(k){
-  $('#card').classList.remove('epc2');$('#modal').classList.remove('clear');subEdit=false;panelSync=null;
+  $('#card').classList.remove('epc2','ccp');$('#modal').classList.remove('clear');subEdit=false;panelSync=null;
+  if(k==='cc')return ccPanel();
   if(k==='sub')return subPanel();
   if(k==='addsub')return addSubPanel();
   if(k==='qedit')return qEditPanel();
@@ -1484,7 +1534,6 @@ function reportPanel(){
   const x=el('button','ib cx');x.innerHTML=svg(IC.x);x.setAttribute('aria-label','Fermer');x.onclick=closeModal;c.append(x);
   m.hidden=false;
 }
-$('#rpb').onclick=()=>openModal('report');
 $('#errrep').onclick=()=>{rpPreset={kind:'Ne démarre pas',msg:'Erreur affichée : '+($('#errT').textContent||'')};openModal('report')};
 
 /* bibliothèque : réglages enregistrés (titre, intro, générique) qui priment sur le lien, donc valables pour les liens déjà partagés */
