@@ -1,8 +1,5 @@
 // middleware.js (racine du projet Vercel), tout-en-un : pas besoin de dossier api/.
-// Publics : les liens embed (e=1 + lien s=...), /api/view (compteur de vues) et /api/live (spectateurs en direct).
-// /api/meta (GET) est public : le lecteur y lit l'intro / le générique / le titre enregistrés dans la bibliothèque.
-// /api/folder (GET) est public : le lecteur y lit la liste des épisodes d'un dossier. /api/report (POST) est public : bouton "Signaler un problème".
-// Protégés par SITE_PASSWORD : la page d'accueil, /stats.html, /library.html, /api/stats, /api/library et l'écriture sur /api/meta, /api/reports (lecture des signalements).
+// Toutes les routes sont désormais publiques (mot de passe retiré).
 export const config = { matcher: ['/', '/index.html', '/stats.html', '/stats', '/api/stats', '/api/view', '/api/live', '/api/meta', '/api/library', '/library.html', '/library', '/api/folder', '/api/report', '/api/reports', '/api/backup', '/api/health'] };
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), {
@@ -490,18 +487,7 @@ export default async function middleware(request) {
   if (u.pathname === '/api/folder' && request.method === 'GET') return folderGet(p);
   if (u.pathname === '/api/report') return reportPost(request);
 
-  const home = u.pathname === '/' || u.pathname === '/index.html';
-  const embed = home && (p.get('e') || p.get('embed')) === '1' && (p.get('s') || p.get('src'));
-  const pass = process.env.SITE_PASSWORD || '';
-  const [scheme, enc] = (request.headers.get('authorization') || '').split(' ');
-  let ok = false;
-  if (scheme === 'Basic' && enc) {
-    try {
-      const d = atob(enc);
-      ok = !!pass && d.slice(d.indexOf(':') + 1) === pass;
-    } catch (e) { ok = false; }
-  }
-  if (!embed && !ok) return new Response('Accès privé', { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="Flux"' } });
+  // Mot de passe retiré : toutes les routes ci-dessous sont désormais publiques, sans vérification.
   if (u.pathname === '/api/stats') return stats(p.get('src'));
   if (u.pathname === '/api/library') return library();
   if (u.pathname === '/api/reports') return reports(request);

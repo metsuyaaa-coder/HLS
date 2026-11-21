@@ -277,21 +277,6 @@ body.embed .player,body.local .player{position:fixed;inset:0;width:100%;height:1
 </head>
 <body>
 
-<section id="gate" hidden>
-  <header><a class="logo" href="?">FLUX</a></header>
-  <div class="wrap">
-    <h1>Accès privé</h1>
-    <p class="lead">Entre le mot de passe pour accéder au générateur.</p>
-    <form id="gf">
-      <label>Mot de passe
-        <input type="password" id="gpw" autocomplete="current-password" required>
-      </label>
-      <div class="msg" id="gmsg" role="alert"></div>
-      <button class="btn" type="submit">Entrer</button>
-    </form>
-  </div>
-</section>
-
 <section id="home" hidden>
   <header><a class="logo" href="?">FLUX</a><a class="tab" href="/library.html">📚 Bibliothèque</a><a class="tab" href="/stats.html">📊 Statistiques</a></header>
   <div class="wrap">
@@ -829,18 +814,6 @@ v.addEventListener('pause',liveLeave);v.addEventListener('ended',liveLeave);
 window.addEventListener('pagehide',liveLeave);
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&cur&&!cur.local&&wSec>=1){try{navigator.sendBeacon('/api/live',new Blob([liveBody(false)],{type:'application/json'}))}catch(e){}}});
 
-/* ---------- accès privé : seuls les liens embed (e=1 + lien) restent publics ---------- */
-const PASS_HASH='5d9bf37fb2496023808138516349da5d5bfba15806349e75822b6190dfe17698';
-const AK='flux-auth';
-const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('');
-const authed=()=>{try{return localStorage.getItem(AK)===PASS_HASH}catch(e){return false}};
-$('#gf').onsubmit=async e=>{
-  e.preventDefault();
-  let h='';try{h=await sha($('#gpw').value)}catch(err){$('#gmsg').textContent='Ce navigateur ne peut pas vérifier le mot de passe (HTTPS requis).';return}
-  if(h===PASS_HASH){try{localStorage.setItem(AK,h)}catch(err){}$('#gpw').value='';$('#gmsg').textContent='';route()}
-  else $('#gmsg').textContent='Mot de passe incorrect.';
-};
-
 /* ---------- routage ---------- */
 const parseSubs=a=>a.map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}}).filter(s=>s.url);
 function route(){
@@ -848,8 +821,7 @@ function route(){
   const open=(q.get('e')||q.get('embed'))==='1'&&!!src;
   document.body.classList.toggle('embed',open);document.body.classList.remove('local');
   destroy();
-  if(!open&&!authed()){$('#home').hidden=true;$('#watch').hidden=true;$('#gate').hidden=false;document.title='Accès privé';return}
-  $('#gate').hidden=true;$('#home').hidden=!!src;$('#watch').hidden=!src;
+  $('#home').hidden=!!src;$('#watch').hidden=!src;
   if(!src){document.title='Flux – Lecteur HLS';return}
   const subs=[...q.getAll('c'),...q.getAll('sub')].map(x=>{const i=x.indexOf('|');return i<0?{label:'Sous-titres',url:full(x)}:{label:nl(x.slice(0,i))||'Sous-titres',url:full(x.slice(i+1))}});
   const nq=q.getAll('n').map(x=>{const parts=x.split('\n'),h=parts[0],i=h.indexOf('|'),u=full(i<0?h:h.slice(i+1)),rest=parts.slice(1),il=rest.find(l=>l.startsWith('@i=')),ol=rest.find(l=>l.startsWith('@o='));return{src:u,title:(i>0?h.slice(0,i):'')||guessTitle(u),subs:parseSubs(rest.filter(l=>!/^@[io]=/.test(l))),intro:il?normIntro(il.slice(3)):'',outro:ol?normOutro(ol.slice(3)):''}});
@@ -2431,7 +2403,7 @@ async function openLocal(list,folder){
   items.sort(lsort);
   LOCSET={name:folder||'',items};
   destroy();document.body.classList.remove('embed');document.body.classList.add('local');
-  $('#gate').hidden=true;$('#home').hidden=true;$('#watch').hidden=false;
+  $('#home').hidden=true;$('#watch').hidden=false;
   start(items[0].src,items[0].title,items[0].subs,items.slice(1),'','',[]);
 }
 /* dossier glissé-déposé : on parcourt les sous-dossiers */
